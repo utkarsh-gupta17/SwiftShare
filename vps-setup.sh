@@ -41,10 +41,20 @@ mvn clean package -DskipTests
 
 # Build frontend
 echo "Building frontend..."
-cd ui/
-npm ci
-npm run build
-cd ..
+if [ -d "ui" ]; then
+    cd ui
+    if [ -f "package-lock.json" ]; then
+        npm ci
+    else
+        echo "package-lock.json not found in ui/, running npm install instead"
+        npm install
+    fi
+    npm run build
+    cd ..
+else
+    echo "Error: ui directory not found!"
+    exit 1
+fi
 
 # Set up Nginx
 echo "Setting up Nginx..."
@@ -107,16 +117,27 @@ fi
 # sudo apt install -y certbot python3-certbot-nginx
 # sudo certbot --nginx -d your-actual-domain.com
 
+# Ensure any existing process is gone before starting
+pm2 delete swiftshare-backend 2>/dev/null || true
+pm2 delete swiftshare-frontend 2>/dev/null || true
+
 # Start backend with PM2 (using explicit classpath — ensures main class is found without a manifest entry)
 echo "Starting backend with PM2..."
 CLASSPATH="target/swiftshare-1.0-SNAPSHOT.jar:$(mvn dependency:build-classpath -DincludeScope=runtime -Dmdep.outputFile=/dev/stdout -q)"
-pm2 start --name swiftshare-backend -- java -cp "$CLASSPATH" p2p.App
+echo "DEBUG: CLASSPATH is '$CLASSPATH'"
+pm2 delete swiftshare-backend 2>/dev/null || true
+pm2 start java --name "swiftshare-backend" -- -cp "$CLASSPATH" p2p.App daemon
 
 # Serve Angular frontend with a static file server
 echo "Starting frontend with PM2 (static server)..."
-cd ui/
-pm2 start --name swiftshare-frontend -- npx serve -s dist/ui/browser -l 3000
-cd ..
+if [ -d "ui" ]; then
+    cd ui
+    pm2 start npx --name swiftshare-frontend -- serve -s dist/ui/browser -l 3000
+    cd ..
+else
+    echo "Error: ui directory not found!"
+    exit 1
+fi
 
 # Save PM2 configuration
 pm2 save
