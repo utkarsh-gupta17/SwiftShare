@@ -45,24 +45,29 @@ import { IconComponent, IconName } from '../icon/icon.component';
               <app-icon [name]="iconName" [size]="24" [className]="iconColorClass" />
             </div>
 
-            <div class="flex-1 min-w-0 pr-4">
+            <div class="flex-1 min-w-0 pr-6">
               <!-- Title -->
-              <h3 
-                id="modal-title" 
-                class="text-xl font-bold text-slate-900 dark:text-slate-100 tracking-tight"
+              <h3
+                id="modal-title"
+                class="text-lg sm:text-xl font-bold text-slate-900 dark:text-white leading-tight tracking-tight"
               >
                 {{ modalState()?.title }}
               </h3>
 
               <!-- Message -->
-              <p class="mt-2 text-sm text-slate-600 dark:text-slate-300 leading-relaxed break-words">
-                {{ modalState()?.message }}
-              </p>
+              <div class="mt-2.5 text-sm sm:text-base text-slate-600 dark:text-slate-300 leading-relaxed space-y-2">
+                @for (line of getMessageLines(); track $index) {
+                  <p [class.font-mono]="isPinLine(line)" class="break-words">{{ line }}</p>
+                }
+              </div>
 
-              <!-- Optional Technical Details -->
+              <!-- Optional Technical Details / PIN Display -->
               @if (modalState()?.details) {
-                <div class="mt-3 p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 rounded-xl text-xs font-mono text-slate-700 dark:text-slate-300 overflow-x-auto max-h-32">
-                  {{ modalState()?.details }}
+                <div class="mt-4 p-4 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl">
+                  <p class="text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 font-semibold mb-1.5">Details</p>
+                  <p class="text-xs sm:text-sm font-mono text-slate-700 dark:text-slate-300 break-all leading-relaxed">
+                    {{ modalState()?.details }}
+                  </p>
                 </div>
               }
             </div>
@@ -171,5 +176,16 @@ export class ModalComponent {
       default:
         return 'bg-blue-600 hover:bg-blue-700 shadow-blue-600/20';
     }
+  }
+
+  getMessageLines(): string[] {
+    const message = this.modalState()?.message || '';
+    // Split on newlines or periods followed by space for better readability
+    return message.split(/\n|(?<=\.)\s+(?=[A-Z])/).filter(line => line.trim());
+  }
+
+  isPinLine(line: string): boolean {
+    // Detect PIN-like patterns (6-digit numbers)
+    return /^\d{6}$/.test(line.trim());
   }
 }
