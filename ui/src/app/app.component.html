@@ -1,0 +1,233 @@
+<!-- Global Modal Host for Warning / Error / Success / Info dialogs -->
+<app-modal></app-modal>
+
+<div class="min-h-screen flex flex-col justify-between bg-gradient-to-br from-slate-50 via-blue-50/20 to-indigo-50/30 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 text-slate-800 dark:text-slate-100 transition-colors duration-200">
+  <!-- Top Navigation Header -->
+  <header class="w-full border-b border-slate-200/80 dark:border-slate-800/80 bg-white/70 dark:bg-slate-900/70 backdrop-blur-md sticky top-0 z-30 transition-all">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <!-- Brand Logo -->
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-violet-500 p-0.5 shadow-md shadow-blue-500/20 flex items-center justify-center">
+          <div class="w-full h-full bg-white/10 rounded-[10px] flex items-center justify-center text-white">
+            <app-icon name="share-2" [size]="20" [strokeWidth]="2.2" />
+          </div>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="text-xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-400 dark:to-indigo-400">
+              SwiftShare
+            </span>
+            <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/80 text-blue-600 dark:text-blue-400 border border-blue-200/80 dark:border-blue-800/80">
+              v1.0
+            </span>
+          </div>
+          <p class="text-[11px] text-slate-500 dark:text-slate-400 font-medium hidden sm:block">
+            Decentralized Peer-to-Peer Transfer
+          </p>
+        </div>
+      </div>
+
+      <!-- Header Controls: Status Badge + Theme Switcher -->
+      <div class="flex items-center gap-3">
+        <!-- Status Pill -->
+        <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200/60 dark:border-emerald-800/60 text-emerald-700 dark:text-emerald-300 text-xs font-semibold">
+          <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span class="hidden sm:inline">P2P Network Engine Ready</span>
+          <span class="sm:hidden">Online</span>
+        </div>
+
+        <!-- Light / Dark Mode Toggle Button -->
+        <button
+          type="button"
+          (click)="themeService.toggleTheme()"
+          class="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all border border-slate-200/80 dark:border-slate-700/80 flex items-center justify-center shadow-sm"
+          [attr.aria-label]="themeService.isDark ? 'Switch to light mode' : 'Switch to dark mode'"
+          [title]="themeService.isDark ? 'Switch to light mode' : 'Switch to dark mode'"
+        >
+          @if (themeService.isDark) {
+            <app-icon name="sun" [size]="18" className="text-amber-400" />
+          } @else {
+            <app-icon name="moon" [size]="18" className="text-slate-700" />
+          }
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content Container -->
+  <main class="flex-1 max-w-4xl w-full mx-auto px-4 sm:px-6 py-8 sm:py-12 flex flex-col justify-center">
+    <!-- Hero / Headline -->
+    <div class="text-center mb-8 sm:mb-10 animate-in fade-in duration-500">
+      <h1 class="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+        Fast, Private <span class="bg-clip-text text-transparent bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 dark:from-blue-400 dark:via-indigo-400 dark:to-violet-400">File Sharing</span>
+      </h1>
+      <p class="mt-2 text-sm sm:text-base text-slate-600 dark:text-slate-400 max-w-xl mx-auto">
+        Upload a file, get a 6-digit PIN. Share the PIN with anyone — they paste it in and download directly from your machine.
+      </p>
+    </div>
+
+    <!-- Main Card -->
+    <div class="card-glass p-6 sm:p-8 relative overflow-hidden transition-all duration-300">
+      <!-- Decorative background accent -->
+      <div class="absolute -top-24 -right-24 w-72 h-72 bg-gradient-to-br from-blue-400/10 to-indigo-400/5 dark:from-blue-500/10 dark:to-indigo-500/5 rounded-full blur-3xl pointer-events-none"></div>
+
+      <!-- Segmented Tab Switcher -->
+      <div class="grid grid-cols-2 p-1.5 rounded-2xl bg-slate-100/90 dark:bg-slate-800/80 border border-slate-200/70 dark:border-slate-700/60 mb-8 max-w-md mx-auto relative">
+        <button
+          type="button"
+          (click)="setActiveTab('upload')"
+          class="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-sm font-semibold transition-all duration-200 select-none"
+          [ngClass]="activeTab() === 'upload' 
+            ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-sm shadow-slate-200 dark:shadow-none border border-slate-200/40 dark:border-slate-700' 
+            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'"
+        >
+          <app-icon name="upload" [size]="17" [strokeWidth]="2.2" />
+          <span>Share a File</span>
+        </button>
+
+        <button
+          type="button"
+          (click)="setActiveTab('download')"
+          class="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-sm font-semibold transition-all duration-200 select-none"
+          [ngClass]="activeTab() === 'download' 
+            ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-sm shadow-slate-200 dark:shadow-none border border-slate-200/40 dark:border-slate-700' 
+            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'"
+        >
+          <app-icon name="download" [size]="17" [strokeWidth]="2.2" />
+          <span>Receive a File</span>
+        </button>
+      </div>
+
+      <!-- Tab Content: SHARE / UPLOAD -->
+      @if (activeTab() === 'upload') {
+        <div class="animate-in fade-in duration-300">
+          <app-file-upload
+            [isUploading]="isUploading()"
+            (fileSelected)="handleFileUpload($event)"
+          ></app-file-upload>
+
+          <!-- Uploading State with Active Progress Glow -->
+          @if (isUploading()) {
+            <div class="mt-6 p-6 rounded-2xl bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/60 text-center animate-in fade-in duration-300">
+              <div class="flex items-center justify-center mb-3">
+                <div class="relative w-12 h-12 flex items-center justify-center">
+                  <div class="w-12 h-12 rounded-full border-4 border-blue-200 dark:border-blue-800 border-t-blue-600 dark:border-t-blue-400 animate-spin"></div>
+                  <app-icon name="upload" [size]="18" className="text-blue-600 dark:text-blue-400 absolute" />
+                </div>
+              </div>
+              <h4 class="text-base font-bold text-slate-800 dark:text-slate-200">
+                Staging File... @if (uploadProgress() > 0) { {{ uploadProgress() }}% }
+              </h4>
+              <!-- Progress bar -->
+              <div class="w-full max-w-xs mx-auto mt-3 bg-slate-200 dark:bg-slate-700 h-2 rounded-full overflow-hidden">
+                <div 
+                  class="bg-blue-600 h-full rounded-full transition-all duration-200" 
+                  [style.width.%]="uploadProgress()"
+                ></div>
+              </div>
+              <p class="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mt-2">
+                Uploading to local storage and opening a peer socket. Your 6-digit PIN will appear shortly.
+              </p>
+            </div>
+          }
+
+          <!-- Selected File Card (when ready or done) -->
+          @if (uploadedFile() && !isUploading()) {
+            <div class="mt-4 p-4 rounded-xl bg-slate-50/90 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-3 animate-in fade-in">
+              <div class="flex items-center gap-3 min-w-0">
+                <div class="w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400 flex items-center justify-center flex-shrink-0">
+                  <app-icon name="file" [size]="20" />
+                </div>
+                <div class="min-w-0">
+                  <p class="text-sm font-semibold text-slate-800 dark:text-slate-200 truncate" [title]="uploadedFile()?.name">
+                    {{ uploadedFile()?.name }}
+                  </p>
+                  <p class="text-xs text-slate-500 dark:text-slate-400">
+                    {{ formatFileSize(uploadedFile()?.size || 0) }}
+                  </p>
+                </div>
+              </div>
+
+              @if (!port()) {
+                <button
+                  type="button"
+                  (click)="resetUpload()"
+                  class="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-200/60 dark:hover:bg-slate-700/60 transition-colors"
+                  title="Remove file"
+                  aria-label="Remove file"
+                >
+                  <app-icon name="x" [size]="16" />
+                </button>
+              }
+            </div>
+          }
+
+          <!-- Invite Code / Access PIN Display -->
+          <app-invite-code [port]="port()" [token]="token()" (onReset)="resetUpload()"></app-invite-code>
+        </div>
+      }
+
+      <!-- Tab Content: RECEIVE / DOWNLOAD -->
+      @if (activeTab() === 'download') {
+        <div class="animate-in fade-in duration-300">
+          <app-file-download
+            [isDownloading]="isDownloading()"
+            (downloadRequested)="handleDownload($event)"
+          ></app-file-download>
+
+          <!-- Downloading State -->
+          @if (isDownloading()) {
+            <div class="mt-6 p-6 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-900/60 text-center animate-in fade-in duration-300">
+              <div class="flex items-center justify-center mb-3">
+                <div class="relative w-12 h-12 flex items-center justify-center">
+                  <div class="w-12 h-12 rounded-full border-4 border-indigo-200 dark:border-indigo-800 border-t-indigo-600 dark:border-t-indigo-400 animate-spin"></div>
+                  <app-icon name="download" [size]="18" className="text-indigo-600 dark:text-indigo-400 absolute" />
+                </div>
+              </div>
+              <h4 class="text-base font-bold text-slate-800 dark:text-slate-200">Transferring Stream...</h4>
+              <p class="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mt-1">
+                Downloading chunks directly from sender peer. Download will trigger automatically upon completion.
+              </p>
+            </div>
+          }
+        </div>
+      }
+    </div>
+
+    <!-- Quick Features Strip -->
+    <div class="mt-8 grid grid-cols-1 sm:grid-cols-3 gap-4 text-center">
+      <div class="p-4 rounded-xl bg-white/60 dark:bg-slate-900/60 border border-slate-200/60 dark:border-slate-800/60 shadow-sm">
+        <div class="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center mx-auto mb-2">
+          <app-icon name="shield" [size]="18" />
+        </div>
+        <h4 class="text-xs font-bold text-slate-800 dark:text-slate-200">PIN-Protected Access</h4>
+        <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Every session gets a unique 6-digit PIN — no link sharing needed</p>
+      </div>
+
+      <div class="p-4 rounded-xl bg-white/60 dark:bg-slate-900/60 border border-slate-200/60 dark:border-slate-800/60 shadow-sm">
+        <div class="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mx-auto mb-2">
+          <app-icon name="hard-drive" [size]="18" />
+        </div>
+        <h4 class="text-xs font-bold text-slate-800 dark:text-slate-200">Up to 500 MB per File</h4>
+        <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Large file support with streamed socket transfer, no cloud involved</p>
+      </div>
+
+      <div class="p-4 rounded-xl bg-white/60 dark:bg-slate-900/60 border border-slate-200/60 dark:border-slate-800/60 shadow-sm">
+        <div class="w-8 h-8 rounded-lg bg-violet-50 dark:bg-violet-950/60 text-violet-600 dark:text-violet-400 flex items-center justify-center mx-auto mb-2">
+          <app-icon name="sparkles" [size]="18" />
+        </div>
+        <h4 class="text-xs font-bold text-slate-800 dark:text-slate-200">No Account Needed</h4>
+        <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Open the page, share a file, done — session expires after 5 minutes</p>
+      </div>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="w-full border-t border-slate-200/80 dark:border-slate-800/80 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm py-6 transition-all">
+    <div class="max-w-5xl mx-auto px-4 text-center">
+      <p class="text-xs text-slate-500 dark:text-slate-400 font-medium">
+          SwiftShare &copy; {{ currentYear }} • Secure Peer-to-Peer File Transfer
+      </p>
+    </div>
+  </footer>
+</div>
