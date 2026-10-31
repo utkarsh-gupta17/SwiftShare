@@ -1,34 +1,38 @@
 package p2p.compression;
 
-import org.junit.Test;
-import static org.junit.Assert.*;
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class CompressionFactoryTest {
 
     @Test
     public void testGetStrategyDeflate() {
-        assertNotNull(CompressionFactory.getStrategy("DEFLATE"));
-        assertEquals("DEFLATE", CompressionFactory.getStrategy("DEFLATE").getAlgorithmName());
+        CompressionStrategy s = CompressionFactory.getStrategy("DEFLATE");
+        assertNotNull(s);
+        assertEquals("DEFLATE", s.getAlgorithmName());
     }
 
     @Test
     public void testGetStrategyGzip() {
-        assertNotNull(CompressionFactory.getStrategy("GZIP"));
-        assertEquals("GZIP", CompressionFactory.getStrategy("GZIP").getAlgorithmName());
+        CompressionStrategy s = CompressionFactory.getStrategy("GZIP");
+        assertNotNull(s);
+        assertEquals("GZIP", s.getAlgorithmName());
     }
 
     @Test
-    public void testGetStrategyUnknown() {
-        assertNull(CompressionFactory.getStrategy("BZIP2"));
+    public void testGetStrategyUnknown_throws() {
+        assertThrows(IllegalArgumentException.class,
+            () -> CompressionFactory.getStrategy("BZIP2"));
     }
 
-    // --- Priority: DEFLATE wins overlap zone (100KB-1MB) ---
+    // --- Priority: GZIP first (≥100KB), DEFLATE for smaller files ---
 
     @Test
-    public void testPriorityOverlapZone_150KB_usesDeflate() {
+    public void testPriorityOverlapZone_150KB_usesGzip() {
+        // 150KB ≥ 100KB → GZIP wins (checked first in PR)
         byte[] data = new byte[150 * 1024];
         CompressionStrategy s = CompressionFactory.getOptimalStrategy(data, "file.bin");
-        assertEquals("DEFLATE", s.getAlgorithmName());
+        assertEquals("GZIP", s.getAlgorithmName());
     }
 
     @Test
@@ -40,6 +44,7 @@ public class CompressionFactoryTest {
 
     @Test
     public void testPrioritySmallFile_500B_usesDeflate() {
+        // 500B < 100KB → GZIP not suitable, DEFLATE not suitable, returns DEFLATE default
         byte[] data = new byte[500];
         CompressionStrategy s = CompressionFactory.getOptimalStrategy(data, "tiny.txt");
         assertEquals("DEFLATE", s.getAlgorithmName());

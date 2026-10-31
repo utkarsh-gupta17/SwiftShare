@@ -2,7 +2,6 @@ package p2p.utils;
 
 import p2p.compression.CompressionStrategy;
 import p2p.compression.CompressionFactory;
-import java.util.zip.GZIPInputStream;
 
 public class CompressionUtils {
 
@@ -34,9 +33,8 @@ public class CompressionUtils {
             return "none";
         }
 
-        // Simple heuristic: check for GZIP magic numbers
-        if (data[0] == (byte) GZIPInputStream.GZIP_MAGIC_BYTE1 &&
-            data[1] == (byte) GZIPInputStream.GZIP_MAGIC_BYTE2) {
+        // GZIP magic bytes: 0x1f 0x8b
+        if (data[0] == (byte) 0x1f && data[1] == (byte) 0x8b) {
             return "GZIP";
         }
 

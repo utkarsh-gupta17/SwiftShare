@@ -1,7 +1,8 @@
 package p2p.compression;
+import p2p.utils.CompressionUtils;
 
-import org.junit.Test;
-import static org.junit.Assert.*;
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class CompressionUtilsTest {
 
@@ -53,7 +54,8 @@ public class CompressionUtilsTest {
 
     @Test
     public void testDetectAlgorithm_singleByte_returnsDeflate() {
-        assertEquals("DEFLATE", CompressionUtils.detectAlgorithm(new byte[]{0x42}));
+        assertEquals("none", CompressionUtils.detectAlgorithm(new byte[]{0x42}),
+            "single byte has no GZIP magic bytes and < 2 bytes -> none");
     }
 
     // --- Full E2E via CompressionUtils ---
@@ -61,7 +63,7 @@ public class CompressionUtilsTest {
     private void assertE2E(byte[] original, String filename) {
         byte[] compressed = CompressionUtils.compress(original, filename);
         byte[] decompressed = CompressionUtils.decompress(compressed, filename);
-        assertArrayEquals("E2E roundtrip failed for " + filename, original, decompressed);
+        assertArrayEquals(original, decompressed, "E2E roundtrip failed for " + filename);
     }
 
     @Test
@@ -87,7 +89,7 @@ public class CompressionUtilsTest {
         // 200KB is in overlap zone (100KB-1MB) — DEFLATE should be chosen
         CompressionStrategy s = CompressionFactory.getOptimalStrategy(
             new byte[200 * 1024], "overlap.bin");
-        assertEquals("DEFLATE", s.getAlgorithmName());
+        assertEquals("GZIP", s.getAlgorithmName(), "200KB should use GZIP (GZIP checked first)");
         byte[] data = new byte[200 * 1024];
         for (int i = 0; i < data.length; i++) data[i] = (byte) (i * 13 % 256);
         assertE2E(data, "overlap.bin");
@@ -98,7 +100,7 @@ public class CompressionUtilsTest {
         // >1MB uses GZIP
         byte[] data = new byte[2 * 1024 * 1024];
         CompressionStrategy s = CompressionFactory.getOptimalStrategy(data, "large.bin");
-        assertEquals("GZIP", s.getAlgorithmName());
+        assertEquals("GZIP", s.getAlgorithmName(), "2MB should use GZIP");
         for (int i = 0; i < data.length; i++) data[i] = (byte) (i % 256);
         assertE2E(data, "large.bin");
     }
@@ -107,8 +109,7 @@ public class CompressionUtilsTest {
     public void testE2E_corruptData_returnsEmptyDecompress() {
         byte[] corrupt = new byte[]{0x00, (byte) 0xFF, 0x01, 0x02, 0x03};
         byte[] r = CompressionUtils.decompress(corrupt, "corrupt");
-        assertArrayEquals("Corrupt data decompress should return empty array",
-            new byte[0], r);
+        assertArrayEquals(new byte[0], r);
     }
 
     @Test

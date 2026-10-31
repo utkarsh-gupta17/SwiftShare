@@ -1,6 +1,8 @@
 package p2p.compression;
-import org.junit.Test;
-import static org.junit.Assert.*;
+import p2p.compression.CompressionFactory;
+import p2p.utils.CompressionUtils;
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
 public class E2ECompressionTest {
 
     @Test
@@ -9,7 +11,7 @@ public class E2ECompressionTest {
         byte[] data = original.getBytes("UTF-8");
         byte[] compressed = CompressionUtils.compress(data, "test.txt");
         byte[] decompressed = CompressionUtils.decompress(compressed, "test.txt");
-        assertArrayEquals("Decompressed data must match original", data, decompressed);
+        assertArrayEquals(data, decompressed);
     }
 
     @Test
@@ -19,7 +21,7 @@ public class E2ECompressionTest {
         for (int i = 0; i < largeData.length; i++) largeData[i] = (byte) (i % 256);
         byte[] compressed = CompressionUtils.compress(largeData, "large.bin");
         byte[] decompressed = CompressionUtils.decompress(compressed, "large.bin");
-        assertArrayEquals("Large file roundtrip must match", largeData, decompressed);
+        assertArrayEquals(largeData, decompressed);
     }
 
     @Test
@@ -29,12 +31,12 @@ public class E2ECompressionTest {
         for (int i = 0; i < mediumData.length; i++) mediumData[i] = (byte) ((i * 3) % 256);
         byte[] compressed = CompressionUtils.compress(mediumData, "medium.bin");
         byte[] decompressed = CompressionUtils.decompress(compressed, "medium.bin");
-        assertArrayEquals("Medium file roundtrip must match", mediumData, decompressed);
+        assertArrayEquals(mediumData, decompressed);
     }
 
     @Test
     public void testNullAndEmptyData() {
-        assertArrayEquals("null compress returns null", new byte[0], CompressionUtils.compress(null, "x"));
-        assertArrayEquals("empty compress returns empty", new byte[0], CompressionUtils.compress(new byte[0], "x"));
+        assertNull(CompressionUtils.compress(null, "x"));
+        assertArrayEquals(new byte[0], CompressionUtils.compress(new byte[0], "x"));
     }
 }

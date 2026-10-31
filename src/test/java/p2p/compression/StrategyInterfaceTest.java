@@ -1,7 +1,8 @@
 package p2p.compression;
+import p2p.utils.CompressionUtils;
 
-import org.junit.Test;
-import static org.junit.Assert.*;
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class StrategyInterfaceTest {
 
@@ -127,7 +128,7 @@ public class StrategyInterfaceTest {
         byte[] compressed = s.compress(original, "t");
         assertNotNull(compressed);
         byte[] decompressed = s.decompress(compressed, "t");
-        assertArrayEquals("Roundtrip must restore exact original", original, decompressed);
+        assertArrayEquals(original, decompressed);
     }
 
     @Test

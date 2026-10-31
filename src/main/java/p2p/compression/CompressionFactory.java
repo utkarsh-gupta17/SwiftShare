@@ -24,6 +24,10 @@ public class CompressionFactory {
     }
 
     public static CompressionStrategy getStrategy(String algorithmName) {
-        return strategies.get(algorithmName);
+        CompressionStrategy s = strategies.get(algorithmName);
+        if (s == null) {
+            throw new IllegalArgumentException("Unknown compression algorithm: " + algorithmName);
+        }
+        return s;
     }
 }
