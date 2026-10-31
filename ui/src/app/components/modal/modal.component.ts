@@ -70,6 +70,19 @@ import { IconComponent, IconName } from '../icon/icon.component';
                   </p>
                 </div>
               }
+
+              <!-- PIN Display (if PIN is in message) -->
+              @if (getPinFromMessage()) {
+                <div class="mt-4 p-4 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/60 dark:to-teal-950/60 border border-emerald-200 dark:border-emerald-800/60 rounded-xl text-center">
+                  <p class="text-xs uppercase tracking-wider text-emerald-600 dark:text-emerald-400 font-semibold mb-2">Your Access PIN</p>
+                  <p class="font-mono text-3xl sm:text-4xl font-extrabold bg-gradient-to-r from-emerald-600 to-teal-600 dark:from-emerald-400 dark:to-teal-400 bg-clip-text text-transparent tracking-widest">
+                    {{ getPinFromMessage() }}
+                  </p>
+                  <p class="text-xs text-emerald-700/80 dark:text-emerald-300/80 mt-2">
+                    Share this PIN with your recipient
+                  </p>
+                </div>
+              }
             </div>
           </div>
 
@@ -187,5 +200,12 @@ export class ModalComponent {
   isPinLine(line: string): boolean {
     // Detect PIN-like patterns (6-digit numbers)
     return /^\d{6}$/.test(line.trim());
+  }
+
+  getPinFromMessage(): string | null {
+    const message = this.modalState()?.message || '';
+    // Look for 6-digit PIN pattern
+    const pinMatch = message.match(/\b(\d{6})\b/);
+    return pinMatch ? pinMatch[1] : null;
   }
 }

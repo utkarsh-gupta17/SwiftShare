@@ -1,73 +1,161 @@
 #!/bin/bash
 
-# SwiftShare VPS Setup Script
-# This script helps set up SwiftShare on a fresh Ubuntu/Debian VPS
+# SwiftShare VPS Setup & Deployment Script
+# Target: Ubuntu / Oracle Cloud Infrastructure or any similar vps service
+#
+# Architecture:
+# Angular -> Nginx :80
+# Java Backend -> PM2 -> localhost:8080
+# API -> Nginx reverse proxy -> Java backend
 
-# Exit on error
-set -e
+set -Eeuo pipefail
 
-echo "=== SwiftShare VPS Setup Script ==="
-echo "This script will install Java, Node.js, Nginx, and set up SwiftShare."
+# ------------------------------------------
+# Configuration
+# ------------------------------------------
 
-# Update system
-echo "Updating system packages..."
+APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+BACKEND_DIR="$APP_DIR"
+FRONTEND_DIR="$APP_DIR/ui"
+
+NGINX_ROOT="/usr/share/nginx/html/ui/browser"
+NGINX_CONFIG="/etc/nginx/sites-available/swiftshare"
+
+BACKEND_NAME="swiftshare-backend"
+BACKEND_MAIN_CLASS="p2p.App"
+
+JAVA_PACKAGE="target/swiftshare-1.0-SNAPSHOT.jar"
+
+echo "======================================"
+echo "       SwiftShare Deployment"
+echo "======================================"
+
+cd "$APP_DIR"
+
+# ------------------------------------------
+# Error handling
+# ------------------------------------------
+
+trap 'echo "ERROR: Deployment failed at line $LINENO. Check the output above."' ERR
+
+# ------------------------------------------
+# 1. Update system packages
+# ------------------------------------------
+
+echo "[1/9] Updating system packages..."
+
 sudo apt update
-sudo apt upgrade -y
 
-# Install Java
-echo "Installing Java..."
-sudo apt install -y openjdk-17-jdk
+# ------------------------------------------
+# 2. Install dependencies
+# ------------------------------------------
 
-# Install Node.js
-echo "Installing Node.js..."
-curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-sudo apt install -y nodejs
+echo "[2/9] Installing dependencies..."
 
-# Install Nginx
-echo "Installing Nginx..."
-sudo apt install -y nginx
+sudo apt install -y \
+    openjdk-17-jdk \
+    curl \
+    nginx \
+    maven \
+    rsync
 
-# Install PM2
-echo "Installing PM2..."
-sudo npm install -g pm2
+# Install Node.js only if missing.
+if ! command -v node >/dev/null 2>&1; then
+    echo "Installing Node.js 18..."
 
-# Install Maven
-echo "Installing Maven..."
-sudo apt install -y maven
+    curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+    sudo apt install -y nodejs
+fi
 
-# Build backend
-echo "Building Java backend..."
+# Install PM2 only if missing.
+if ! command -v pm2 >/dev/null 2>&1; then
+    sudo npm install -g pm2
+fi
+
+echo "Java version:"
+java -version
+
+echo "Node version:"
+node --version
+
+echo "NPM version:"
+npm --version
+
+# ------------------------------------------
+# 3. Build Java backend
+# ------------------------------------------
+
+echo "[3/9] Building Java backend..."
+
+cd "$BACKEND_DIR"
+
 mvn clean package -DskipTests
 
-# Build frontend
-echo "Building frontend..."
-if [ -d "ui" ]; then
-    cd ui
-    if [ -f "package-lock.json" ]; then
-        npm ci
-    else
-        echo "package-lock.json not found in ui/, running npm install instead"
-        npm install
-    fi
-    npm run build
-    cd ..
-else
-    echo "Error: ui directory not found!"
+if [ ! -f "$JAVA_PACKAGE" ]; then
+    echo "ERROR: Backend JAR not found: $JAVA_PACKAGE"
     exit 1
 fi
 
-# Set up Nginx
-echo "Setting up Nginx..."
+# Build runtime classpath.
+DEPENDENCY_CP=$(mvn dependency:build-classpath \
+    -DincludeScope=runtime \
+    -Dmdep.outputFile=/dev/stdout \
+    -q)
 
-# Ensure the default site is removed to avoid conflicts
-if [ -e /etc/nginx/sites-enabled/default ]; then
-    sudo rm /etc/nginx/sites-enabled/default
-    echo "Removed default Nginx site configuration."
+CLASSPATH="$BACKEND_DIR/$JAVA_PACKAGE:$DEPENDENCY_CP"
+
+# ------------------------------------------
+# 4. Build Angular frontend
+# ------------------------------------------
+
+echo "[4/9] Building Angular frontend..."
+
+cd "$FRONTEND_DIR"
+
+if [ -f package-lock.json ]; then
+    npm ci
+else
+    npm install
 fi
 
-# Create the swiftshare configuration file
-echo "Creating /etc/nginx/sites-available/swiftshare..."
-sudo tee /etc/nginx/sites-available/swiftshare > /dev/null <<'EOF'
+npm run build
+
+FRONTEND_BUILD="$FRONTEND_DIR/dist/ui/browser"
+
+if [ ! -f "$FRONTEND_BUILD/index.html" ]; then
+    echo "ERROR: Angular index.html not found!"
+    echo "Expected: $FRONTEND_BUILD/index.html"
+    echo "Check your Angular build output configuration."
+    exit 1
+fi
+
+echo "Angular build successful."
+
+# ------------------------------------------
+# 5. Deploy frontend to Nginx
+# ------------------------------------------
+
+echo "[5/9] Deploying frontend to Nginx..."
+
+sudo mkdir -p "$NGINX_ROOT"
+
+# Deploy fresh build and remove obsolete assets.
+sudo rsync -a --delete \
+    "$FRONTEND_BUILD/" \
+    "$NGINX_ROOT/"
+
+sudo chown -R www-data:www-data "$NGINX_ROOT"
+
+echo "Frontend deployed successfully."
+
+# ------------------------------------------
+# 6. Configure Nginx
+# ------------------------------------------
+
+echo "[6/9] Configuring Nginx..."
+
+sudo tee "$NGINX_CONFIG" > /dev/null <<'EOF'
 server {
     listen 80;
     server_name _;
@@ -75,21 +163,24 @@ server {
     root /usr/share/nginx/html/ui/browser;
     index index.html;
 
-    # Serve Angular static files
+    # Angular frontend
     location / {
         try_files $uri $uri/ /index.html;
     }
 
-    # Backend API proxy
+    # Java backend API
     location /api/ {
         proxy_pass http://localhost:8080/;
         proxy_http_version 1.1;
+
         proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
+        proxy_set_header Connection "upgrade";
+
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+
         proxy_cache_bypass $http_upgrade;
     }
 
@@ -100,61 +191,104 @@ server {
 }
 EOF
 
-# Create the symbolic link to enable the swiftshare site
-sudo ln -sf /etc/nginx/sites-available/swiftshare /etc/nginx/sites-enabled/swiftshare
+# Enable SwiftShare site.
+sudo ln -sfn "$NGINX_CONFIG" \
+    /etc/nginx/sites-enabled/swiftshare
 
+# Remove default Nginx site.
+sudo rm -f /etc/nginx/sites-enabled/default
+
+# Validate before reloading.
 sudo nginx -t
-if [ $? -eq 0 ]; then
-    sudo systemctl restart nginx
-    echo "Nginx configured and restarted successfully."
-else
-    echo "Nginx configuration test failed. Please check /etc/nginx/nginx.conf and /etc/nginx/sites-available/swiftshare."
-    exit 1
+
+sudo systemctl enable nginx
+sudo systemctl reload nginx
+
+echo "Nginx configured successfully."
+
+# ------------------------------------------
+# 7. Clear existing PM2 processes
+# ------------------------------------------
+
+echo "[7/9] Clearing existing PM2 processes..."
+
+pm2 delete all || true
+
+echo "Existing PM2 processes cleared."
+
+# ------------------------------------------
+# 8. Start/restart Java backend using PM2
+# ------------------------------------------
+
+echo "[7/9] Deploying Java backend..."
+
+# Restart existing process if present.
+if pm2 describe "$BACKEND_NAME" >/dev/null 2>&1; then
+
+    pm2 delete "$BACKEND_NAME"
+
 fi
 
-# Set up SSL with Let's Encrypt (uncomment if needed)
-# echo "Setting up SSL with Let's Encrypt..."
-# sudo apt install -y certbot python3-certbot-nginx
-# sudo certbot --nginx -d your-actual-domain.com
+pm2 start java \
+    --name "$BACKEND_NAME" \
+    --cwd "$BACKEND_DIR" \
+    -- -cp "$CLASSPATH" "$BACKEND_MAIN_CLASS" daemon
 
-# Ensure any existing process is gone before starting
-pm2 delete swiftshare-backend 2>/dev/null || true
-pm2 delete swiftshare-frontend 2>/dev/null || true
+echo "Backend started through PM2."
 
-# Start backend with PM2 (using explicit classpath — ensures main class is found without a manifest entry)
-echo "Starting backend with PM2..."
-CLASSPATH="target/swiftshare-1.0-SNAPSHOT.jar:$(mvn dependency:build-classpath -DincludeScope=runtime -Dmdep.outputFile=/dev/stdout -q)"
-echo "DEBUG: CLASSPATH is '$CLASSPATH'"
-pm2 delete swiftshare-backend 2>/dev/null || true
-pm2 start java --name "swiftshare-backend" -- -cp "$CLASSPATH" p2p.App daemon
+# ------------------------------------------
+# 9. Save PM2 process configuration
+# ------------------------------------------
 
-# Serve Angular frontend with a static file server
-echo "Starting frontend with PM2 (static server)..."
-if [ -d "ui" ]; then
-    cd ui
-    # pm2 start npx --name swiftshare-frontend -- serve -s dist/ui -l 3000
-    pm2 start npx --name swiftshare-frontend -- serve -s dist/ui/browser -l 3000 --no-clipboard
-    cd ..
-else
-    echo "Error: ui directory not found!"
-    exit 1
-fi
+echo "[8/9] Saving PM2 configuration..."
 
-# Save PM2 configuration
 pm2 save
 
-# Set up PM2 to start on boot
-echo "Setting up PM2 to start on boot..."
-pm2 startup
-# Follow the instructions printed by the above command
+# Configure PM2 to start on system boot
+echo "Configuring PM2 startup..."
+
+sudo env PATH=$PATH:/usr/bin \
+    "$(command -v pm2)" startup systemd \
+    -u ubuntu \
+    --hp /home/ubuntu
+
+pm2 save
+
+echo "PM2 startup configured successfully."
+
+# ------------------------------------------
+# 10. Final verification
+# ------------------------------------------
+
+echo "[9/9] Verifying deployment..."
 
 echo ""
-echo "=== Setup Complete ==="
-echo "SwiftShare is now running on your VPS!"
-echo "Frontend: http://<your-vps-ip> (Nginx on port 80 serves Angular static files)"
-echo "Backend API: http://<your-vps-ip>/api/ (proxied to port 8080)"
+echo "Nginx status:"
+sudo systemctl is-active nginx
+
 echo ""
-echo "To serve Angular build output directly, copy dist/ui/browser to nginx root:"
-echo "  sudo cp -r ui/dist/ui/browser /usr/share/nginx/html"
+echo "PM2 status:"
+pm2 status
+
 echo ""
-echo "Then restart nginx: sudo systemctl restart nginx"
+echo "Listening ports:"
+sudo ss -lntp | grep -E ':80|:8080' || true
+
+echo ""
+echo "Frontend response:"
+curl -s -o /dev/null -w "HTTP %{http_code}\n" \
+    http://localhost/
+
+echo ""
+echo "======================================"
+echo "       Deployment Complete!"
+echo "======================================"
+
+echo "Frontend: http://YOUR_PUBLIC_IP/"
+echo "Backend API: http://YOUR_PUBLIC_IP/api/"
+echo ""
+echo "Frontend directory: $NGINX_ROOT"
+echo "Backend process: $BACKEND_NAME"
+echo ""
+echo "Note: Angular is served directly by Nginx."
+echo "======================================"

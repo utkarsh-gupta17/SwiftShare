@@ -100,7 +100,7 @@
 
       <!-- Tab Content: SHARE / UPLOAD -->
       @if (activeTab() === 'upload') {
-        <div class="animate-in fade-in duration-300">
+        <div class="animate-in fade-in duration-300 space-y-4">
           <app-file-upload
             [isUploading]="isUploading()"
             (fileSelected)="handleFileUpload($event)"
@@ -108,7 +108,7 @@
 
           <!-- Uploading State with Active Progress Glow -->
           @if (isUploading()) {
-            <div class="mt-6 p-6 rounded-2xl bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/60 text-center animate-in fade-in duration-300">
+            <div class="p-6 rounded-2xl bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/60 text-center animate-in fade-in duration-300">
               <div class="flex items-center justify-center mb-3">
                 <div class="relative w-12 h-12 flex items-center justify-center">
                   <div class="w-12 h-12 rounded-full border-4 border-blue-200 dark:border-blue-800 border-t-blue-600 dark:border-t-blue-400 animate-spin"></div>
@@ -120,8 +120,8 @@
               </h4>
               <!-- Progress bar -->
               <div class="w-full max-w-xs mx-auto mt-3 bg-slate-200 dark:bg-slate-700 h-2 rounded-full overflow-hidden">
-                <div 
-                  class="bg-blue-600 h-full rounded-full transition-all duration-200" 
+                <div
+                  class="bg-blue-600 h-full rounded-full transition-all duration-200"
                   [style.width.%]="uploadProgress()"
                 ></div>
               </div>
@@ -131,39 +131,39 @@
             </div>
           }
 
-          <!-- Selected File Card (when ready or done) -->
-          @if (uploadedFile() && !isUploading()) {
-            <div class="mt-4 p-4 rounded-xl bg-slate-50/90 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-3 animate-in fade-in">
-              <div class="flex items-center gap-3 min-w-0">
-                <div class="w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400 flex items-center justify-center flex-shrink-0">
-                  <app-icon name="file" [size]="20" />
-                </div>
-                <div class="min-w-0">
-                  <p class="text-sm font-semibold text-slate-800 dark:text-slate-200 truncate" [title]="uploadedFile()?.name">
-                    {{ uploadedFile()?.name }}
-                  </p>
-                  <p class="text-xs text-slate-500 dark:text-slate-400">
-                    {{ formatFileSize(uploadedFile()?.size || 0) }}
-                  </p>
+          <!-- Active Sessions List -->
+          @if (activeSessions().length > 0) {
+            <div class="space-y-3">
+              <!-- Section header -->
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <app-icon name="clock" [size]="15" className="text-slate-500 dark:text-slate-400" />
+                  <span class="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Active Sessions
+                  </span>
+                  <span class="inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
+                    {{ activeSessions().length }}
+                  </span>
                 </div>
               </div>
 
-              @if (!port()) {
-                <button
-                  type="button"
-                  (click)="resetUpload()"
-                  class="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-200/60 dark:hover:bg-slate-700/60 transition-colors"
-                  title="Remove file"
-                  aria-label="Remove file"
-                >
-                  <app-icon name="x" [size]="16" />
-                </button>
+              <!-- Session cards (newest at top) -->
+              @for (session of activeSessions(); track session.id; let i = $index) {
+                <app-invite-code
+                  [token]="session.token"
+                  [port]="session.port"
+                  [fileName]="session.fileName"
+                  [fileSize]="session.fileSize"
+                  [sessionNumber]="activeSessions().length - i"
+                  [expiresInSeconds]="session.expiresInSeconds"
+                  [showDismiss]="true"
+                  [colorScheme]="getSessionColorScheme(i)"
+                  (onDismiss)="removeSession(session.id)"
+                  (onExpire)="removeSession(session.id)"
+                ></app-invite-code>
               }
             </div>
           }
-
-          <!-- Invite Code / Access PIN Display -->
-          <app-invite-code [port]="port()" [token]="token()" (onReset)="resetUpload()"></app-invite-code>
         </div>
       }
 

@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FileUploadComponent } from './components/file-upload/file-upload.component';
 import { FileDownloadComponent } from './components/file-download/file-download.component';
@@ -8,6 +8,16 @@ import { IconComponent } from './components/icon/icon.component';
 import { FileTransferService } from './services/file-transfer.service';
 import { ModalService } from './services/modal.service';
 import { ThemeService } from './services/theme.service';
+
+export interface SharingSession {
+  id: string;
+  fileName: string;
+  fileSize: number;
+  token: string;
+  port: number;
+  createdAt: Date;
+  expiresInSeconds: number;
+}
 
 @Component({
   selector: 'app-root',
@@ -29,36 +39,62 @@ export class AppComponent {
   readonly themeService = inject(ThemeService);
 
   activeTab = signal<'upload' | 'download'>('upload');
-  uploadedFile = signal<File | null>(null);
   isUploading = signal<boolean>(false);
   uploadProgress = signal<number>(0);
   isDownloading = signal<boolean>(false);
-  port = signal<number | null>(null);
-  token = signal<string | null>(null);
+  sessions = signal<SharingSession[]>([]);
 
   currentYear = new Date().getFullYear();
+
+  // Computed: active sessions (newest first - index 0 = newest)
+  readonly activeSessions = computed(() => {
+    return this.sessions()
+      .slice()
+      .reverse(); // Newest first
+  });
+
+  // Session counter for display
+  readonly sessionCount = computed(() => this.sessions().length);
+
+  // Color schemes for sessions (cycles through)
+  private colorSchemes: ('emerald' | 'blue' | 'violet')[] = ['emerald', 'blue', 'violet'];
+  private colorSchemeIndex = 0;
+
+  getSessionColorScheme(index: number): 'emerald' | 'blue' | 'violet' {
+    return this.colorSchemes[index % this.colorSchemes.length];
+  }
 
   setActiveTab(tab: 'upload' | 'download'): void {
     this.activeTab.set(tab);
   }
 
   handleFileUpload(file: File): void {
-    this.uploadedFile.set(file);
     this.isUploading.set(true);
     this.uploadProgress.set(0);
-    this.port.set(null);
-    this.token.set(null);
 
     this.fileTransfer.uploadFileWithProgress(file).subscribe({
       next: (update) => {
         this.uploadProgress.set(update.progress);
         if (update.result) {
-          this.port.set(update.result.port);
-          this.token.set(update.result.token);
+          // Create new session
+          const newSession: SharingSession = {
+            id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            fileName: file.name,
+            fileSize: file.size,
+            token: update.result.token,
+            port: update.result.port,
+            createdAt: new Date(),
+            expiresInSeconds: 90, // 1.5 minutes
+          };
 
+          // Add to sessions array
+          this.sessions.update(sessions => [...sessions, newSession]);
+
+          // Show confirmation toast-style notification
           this.modalService.success(
-            'Ready to Share!',
-            `"${file.name}" (${this.formatFileSize(file.size)}) is staged. Share your 6-digit PIN (${update.result.token}) with your recipient.`
+            'File Ready to Share!',
+            `"${file.name}" is staged. Share the PIN with your recipient.`,
+            `PIN: ${update.result.token}`
           );
         }
       },
@@ -95,6 +131,11 @@ export class AppComponent {
 
     try {
       const result = await this.fileTransfer.downloadFile(pin);
+
+      // Find the session and mark as completed (it will expire naturally)
+      const sessions = this.sessions();
+      const sessionIndex = sessions.findIndex(s => s.token === pin);
+
       this.modalService.success(
         'Download Finished',
         `Downloaded "${result.filename}" (${this.formatFileSize(result.size)}) directly from your peer!`
@@ -119,11 +160,8 @@ export class AppComponent {
     }
   }
 
-  resetUpload(): void {
-    this.uploadedFile.set(null);
-    this.port.set(null);
-    this.token.set(null);
-    this.uploadProgress.set(0);
+  removeSession(sessionId: string): void {
+    this.sessions.update(sessions => sessions.filter(s => s.id !== sessionId));
   }
 
   formatFileSize(bytes: number): string {

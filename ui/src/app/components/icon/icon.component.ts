@@ -20,7 +20,9 @@ export type IconName =
   | 'arrow-right'
   | 'sparkles'
   | 'sun'
-  | 'moon';
+  | 'moon'
+  | 'clock'
+  | 'upload-cloud';
 
 @Component({
   selector: 'app-icon',
@@ -129,6 +131,15 @@ export type IconName =
         }
         @case ('moon') {
           <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
+        }
+        @case ('clock') {
+          <circle cx="12" cy="12" r="10" />
+          <polyline points="12 6 12 12 16 14" />
+        }
+        @case ('upload-cloud') {
+          <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242" />
+          <path d="M12 13v8" />
+          <path d="m16 16-4-4-4 4" />
         }
       }
     </svg>
