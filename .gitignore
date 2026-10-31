@@ -1,0 +1,86 @@
+# ─── Java / Maven ────────────────────────────────────────────────────────────
+target/
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+*.zip
+*.tar.gz
+*.rar
+hs_err_pid*
+replay_pid*
+
+# Maven wrapper cache
+.mvn/repository/
+
+# ─── Angular / Node ──────────────────────────────────────────────────────────
+ui/node_modules/
+ui/dist/
+ui/.angular/cache/
+ui/out-tsc/
+ui/coverage/
+ui/.sass-cache/
+ui/connect.lock
+ui/libpeerconnection.log
+ui/testem.log
+ui/typings/
+npm-debug.log*
+yarn-error.log*
+yarn.lock
+package-lock.json
+
+# ─── Environment / Secrets ───────────────────────────────────────────────────
+# Keep .env.example (template), but never commit real env values
+ui/.env
+.env
+.env.local
+.env.*.local
+
+# ─── IDEs and Editors ────────────────────────────────────────────────────────
+.idea/
+*.iml
+*.iws
+*.ipr
+.project
+.classpath
+.settings/
+*.launch
+*.sublime-workspace
+*.sublime-project
+.c9/
+.history/
+
+# VS Code — keep shared config, ignore personal workspace overrides
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# ─── OS / System ─────────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ─── Temp / Upload scratch files ─────────────────────────────────────────────
+# The backend writes uploaded files to the OS temp dir, but just in case
+/tmp/
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# ─── Logs ────────────────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ─── Build output (generic) ──────────────────────────────────────────────────
+out/
+build/

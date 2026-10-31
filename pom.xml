@@ -4,10 +4,10 @@
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>p2p</groupId>
-  <artifactId>p2p-file-transfer</artifactId>
+  <artifactId>swiftshare</artifactId>
   <version>1.0-SNAPSHOT</version>
 
-  <name>p2p-file-transfer</name>
+  <name>SwiftShare</name>
   <!-- FIXME change it to the project's website -->
   <url>http://www.example.com</url>
 

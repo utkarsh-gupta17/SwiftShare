@@ -1,4 +1,4 @@
-package main.java.p2p.service;
+package p2p.service;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -6,114 +6,152 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.nio.BufferOverflowException;
-import java.util.HashMap;
+import java.nio.charset.StandardCharsets;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import p2p.utils.UploadUtils;
 
-import main.java.p2p.utils.UploadUtils;
-
+// Manages ongoing file sharing sessions and socket connections
 public class FileSharer {
-    
-    // this stores the ports that are currently actively providing a file to download with the file path
-    private HashMap<Integer, String> availableFiles;
+
+    // Maps port -> local file path on the machine
+    private final ConcurrentHashMap<Integer, String> availableFiles;
+
+    // Maps port -> 6-digit access PIN
+    private final ConcurrentHashMap<Integer, String> accessTokens;
+
+    // 5 minute window for a receiver to connect before the session expires
+    private static final int TIMEOUT_MS = 300000;
 
     public FileSharer() {
-        // basic initialisation
-        availableFiles = new HashMap<>();
+        this.availableFiles = new ConcurrentHashMap<>();
+        this.accessTokens = new ConcurrentHashMap<>();
     }
 
-    // public int offerFile(String filePath) {
-    //     // loop and ensure you get a available port
-    //     int port;
-    //     while(true) {
-    //         port = UploadUtils.generateCode();
-    //         if(!availableFiles.containsKey(port)) {
-    //             // this means this port is available to be added
-    //             availableFiles.put(port,filePath);
-    //             return port;
-    //         }
-    //     }
-    // }
-
+    // Set up a new file for sharing, assigns a random free port and PIN
     public int offerFile(String filePath) {
-        long timeout = 5000; // 5 seconds timout to avoid infinite looping
-        long startTime = System.currentTimeMillis();
+        long timeout = 5000;
+        long start = System.currentTimeMillis();
 
-        while (System.currentTimeMillis() - startTime < timeout) {
+        while (System.currentTimeMillis() - start < timeout) {
             int port = UploadUtils.generateCode();
 
             if (!availableFiles.containsKey(port)) {
-                // this means this port is available to be added
+                String pin = UploadUtils.generateSecurityPin();
                 availableFiles.put(port, filePath);
+                accessTokens.put(port, pin);
                 return port;
             }
         }
 
-        throw new RuntimeException("Unable to generate an available port. Request timed out.");
+        throw new RuntimeException("Could not find a free port for sharing in time.");
     }
 
-    public void startFileServer(int port) {
-        String filePath = availableFiles.get(port);
-        if(filePath==null) {
-            System.out.println("No file is associated with port "+port);
-            return;
-        }
-
-        // start a server and client Socket connection and spawn a thread which will serve the file
-        try (ServerSocket serverSocket = new ServerSocket(port)) {
-            System.out.println("Serving file "+ new File(filePath).getName() + "on port "+port);
-            Socket clientSocket = serverSocket.accept();
-            System.out.println("Client connection "+ clientSocket.getInetAddress());
-            new Thread(new FileSharerHandler(clientSocket, filePath)).start();
-        } catch (IOException e) {
-            System.err.println("Error handling file server on port: "+port);
-        } 
+    public boolean isPortActive(int port) {
+        return availableFiles.containsKey(port);
     }
 
-    // Thread requires a class implementing Runnable which overrides the method run
-    private static class FileSharerHandler implements Runnable {
+    public String getPinForPort(int port) {
+        return accessTokens.get(port);
+    }
 
-        private final Socket clientSocket;
-        private final String filePath;
-
-        public FileSharerHandler(Socket clientSocket, String filePath) {
-            this.clientSocket = clientSocket;
-            this.filePath = filePath;
+    // Find the port that corresponds to a given PIN
+    public Integer getPortByPin(String pin) {
+        if (pin == null || pin.trim().isEmpty()) {
+            return null;
         }
-    
-        // here we upload the file to the clientSocket
-        @Override
-        public void run() {
-            // Socket is a stream and in java every i/o is a stream as well
-            try(FileInputStream fis = new FileInputStream(filePath)) {
-                // sockets have input and output stream
-                // input stream is coming through the socket
-                // output stream is whatever you want to send to the socket
-                // here we upload file to the clientSocket, so we use output stream
+        for (Map.Entry<Integer, String> entry : accessTokens.entrySet()) {
+            if (entry.getValue().equals(pin.trim())) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
 
-                OutputStream oos = clientSocket.getOutputStream();
-                String fileName = new File(filePath).getName();
-                // we first send the filename in the header
-                String header = "Filename: "+fileName+"\n";
-                oos.write(header.getBytes());
+    // Verify whether the supplied PIN matches what we have for this port
+    public boolean validatePin(int port, String pin) {
+        if (pin == null || !accessTokens.containsKey(port)) {
+            return false;
+        }
+        return accessTokens.get(port).equals(pin.trim());
+    }
 
-                byte[] buffer = new byte[4096]; //file limit
-                int byteRead; // to read content from file
-                while((byteRead = fis.read(buffer))!=-1) {
-                    oos.write(buffer, 0, byteRead);
-                    // next time the offset starts from byteRead, use this to expand file limit size
-                }
-                System.out.println("File " + fileName + " sent to " + clientSocket.getInetAddress());
-                
-            } catch (Exception e) {
-                System.err.println("Error seding file to the client: " + e.getMessage());
-            } finally {
-                try {
-                    clientSocket.close();
-                } catch (Exception e) {
-                    System.out.println("Error closing socket: " + e.getMessage());
+    // Remove temp file and clear maps once the file has been downloaded
+    public void cleanupFileTransfer(int port) {
+        String filePath = availableFiles.remove(port);
+        accessTokens.remove(port);
+
+        if (filePath != null) {
+            File file = new File(filePath);
+            if (file.exists()) {
+                if (!file.delete()) {
+                    System.err.println("Could not delete temporary file: " + filePath);
                 }
             }
         }
-        
+    }
+
+    // Listen on the assigned port and send the file when the receiver connects
+    public void startFileServer(int port) {
+        String filePath = availableFiles.get(port);
+        if (filePath == null) {
+            System.err.println("No file found for port " + port);
+            return;
+        }
+
+        try (ServerSocket serverSocket = new ServerSocket(port)) {
+            serverSocket.setSoTimeout(TIMEOUT_MS);
+            System.out.println("Serving " + new File(filePath).getName() + " on port " + port);
+
+            Socket clientSocket = serverSocket.accept();
+            clientSocket.setSoTimeout(TIMEOUT_MS);
+            System.out.println("Receiver connected from: " + clientSocket.getInetAddress());
+
+            new Thread(new FileSenderTask(clientSocket, filePath)).start();
+        } catch (java.net.SocketTimeoutException e) {
+            // Nobody connected within the timeout window — clean up so the PIN can't be reused
+            System.err.println("No receiver connected within timeout for port " + port + ", cleaning up.");
+            cleanupFileTransfer(port);
+        } catch (IOException e) {
+            System.err.println("Socket error on port " + port + ": " + e.getMessage());
+        }
+    }
+
+    // Worker to stream file bytes over the socket
+    private static class FileSenderTask implements Runnable {
+        private final Socket clientSocket;
+        private final String filePath;
+
+        public FileSenderTask(Socket clientSocket, String filePath) {
+            this.clientSocket = clientSocket;
+            this.filePath = filePath;
+        }
+
+        @Override
+        public void run() {
+            try (FileInputStream fis = new FileInputStream(filePath)) {
+                clientSocket.setSoTimeout(TIMEOUT_MS);
+                OutputStream out = clientSocket.getOutputStream();
+
+                String name = new File(filePath).getName();
+                // Send the filename first so the downloader knows what to call it
+                String header = "Filename: " + name + "\n";
+                out.write(header.getBytes(StandardCharsets.UTF_8));
+
+                byte[] buffer = new byte[8192];
+                int count;
+                while ((count = fis.read(buffer)) != -1) {
+                    out.write(buffer, 0, count);
+                }
+                out.flush();
+                System.out.println("File transfer complete for " + name);
+            } catch (Exception e) {
+                System.err.println("Error sending file over socket: " + e.getMessage());
+            } finally {
+                try {
+                    clientSocket.close();
+                } catch (IOException ignored) {}
+            }
+        }
     }
 }
