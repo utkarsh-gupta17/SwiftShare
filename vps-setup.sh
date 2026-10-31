@@ -41,7 +41,7 @@ mvn clean package -DskipTests
 
 # Build frontend
 echo "Building frontend..."
-cd ui
+cd ui/
 npm ci
 npm run build
 cd ..
@@ -114,7 +114,7 @@ pm2 start --name swiftshare-backend -- java -cp "$CLASSPATH" p2p.App
 
 # Serve Angular frontend with a static file server
 echo "Starting frontend with PM2 (static server)..."
-cd ui
+cd ui/
 pm2 start --name swiftshare-frontend -- npx serve -s dist/ui/browser -l 3000
 cd ..
 
