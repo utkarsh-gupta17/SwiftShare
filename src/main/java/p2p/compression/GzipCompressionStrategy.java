@@ -7,7 +7,6 @@ import java.util.zip.GZIPOutputStream;
 
 public class GzipCompressionStrategy implements CompressionStrategy {
 
-    private static final int BUFFER_SIZE = 8192;
 
     @Override
     public byte[] compress(byte[] data, String filename) {
