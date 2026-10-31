@@ -132,7 +132,8 @@ pm2 start java --name "swiftshare-backend" -- -cp "$CLASSPATH" p2p.App daemon
 echo "Starting frontend with PM2 (static server)..."
 if [ -d "ui" ]; then
     cd ui
-    pm2 start npx --name swiftshare-frontend -- serve -s dist/ui/browser -l 3000
+    # pm2 start npx --name swiftshare-frontend -- serve -s dist/ui -l 3000
+    pm2 start npx --name swiftshare-frontend -- serve -s dist/ui -l 3000 --no-clipboard
     cd ..
 else
     echo "Error: ui directory not found!"
