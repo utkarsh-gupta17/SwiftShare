@@ -16,6 +16,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import p2p.service.FileSharer;
 import p2p.utils.MultipartParser;
+import p2p.utils.CompressionUtils;
 
 // Receives multipart upload, validates file type & size, and starts sharing session
 public class UploadHandler implements HttpHandler {
@@ -147,8 +148,11 @@ public class UploadHandler implements HttpHandler {
         String uniqueName = UUID.randomUUID() + "_" + filename;
         String savePath = uploadDir + File.separator + uniqueName;
 
+        // Compress file content before save
+        byte[] compressed = CompressionUtils.compress(parsed.fileContent, filename);
+
         try (FileOutputStream fos = new FileOutputStream(savePath)) {
-            fos.write(parsed.fileContent);
+            fos.write(compressed);
         }
 
         // Stage file with sharer and start listening on socket

@@ -13,6 +13,7 @@ import java.io.OutputStream;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import p2p.service.FileSharer;
+import p2p.utils.CompressionUtils;
 
 // Handles GET requests for downloading files, checks PIN token and streams file
 public class DownloadHandler implements HttpHandler {
@@ -113,14 +114,15 @@ public class DownloadHandler implements HttpHandler {
             headers.add("Content-Disposition", "attachment; filename=\"" + filename + "\"");
             headers.add("Content-Type", "application/octet-stream");
 
-            exchange.sendResponseHeaders(200, tempFile.length());
-            try (OutputStream httpOut = exchange.getResponseBody();
-                 FileInputStream fileIn = new FileInputStream(tempFile)) {
-                byte[] buffer = new byte[8192];
-                int count;
-                while ((count = fileIn.read(buffer)) != -1) {
-                    httpOut.write(buffer, 0, count);
-                }
+            byte[] compressedData;
+            try (FileInputStream fis = new FileInputStream(tempFile)) {
+                compressedData = fis.readAllBytes();
+            }
+            byte[] fileData = CompressionUtils.decompress(compressedData, filename);
+
+            exchange.sendResponseHeaders(200, fileData.length);
+            try (OutputStream httpOut = exchange.getResponseBody()) {
+                httpOut.write(fileData);
             }
 
             // Clean up file and remove session since download completed
