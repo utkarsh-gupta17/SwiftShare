@@ -102,7 +102,7 @@ export class AppComponent {
         this.isUploading.set(false);
         console.error('File upload failed:', error);
 
-        // Try extracting specific backend message
+        // Try extracting specific backend message - show full message without truncation
         let errorMsg = 'Failed to upload file. Please check that the server is running.';
         if (error.error) {
           if (typeof error.error === 'string') {
@@ -114,10 +114,13 @@ export class AppComponent {
           errorMsg = error.message;
         }
 
+        // Clean up common truncation patterns in error messages
+        errorMsg = errorMsg.replace(/\.\.\./g, '…');
+
         this.modalService.error(
           'Upload Failed',
           errorMsg,
-          `HTTP ${error.status || 'Network error'}: ${error.statusText || 'Unable to connect'}`
+          error.status ? `HTTP ${error.status}: ${error.statusText || 'Error'}` : 'Unable to connect to server'
         );
       },
       complete: () => {

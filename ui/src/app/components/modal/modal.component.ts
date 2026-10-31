@@ -1,4 +1,4 @@
-import { Component, HostListener, inject } from '@angular/core';
+import { Component, HostListener, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ModalService } from '../../services/modal.service';
 import { IconComponent, IconName } from '../icon/icon.component';
@@ -9,20 +9,20 @@ import { IconComponent, IconName } from '../icon/icon.component';
   imports: [CommonModule, IconComponent],
   template: `
     @if (modalState()) {
-      <div 
+      <div
         class="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto animate-in fade-in duration-200"
         role="dialog"
         aria-modal="true"
         [attr.aria-labelledby]="'modal-title'"
       >
         <!-- Backdrop -->
-        <div 
+        <div
           class="fixed inset-0 bg-slate-950/70 backdrop-blur-sm transition-opacity"
           (click)="onBackdropClick()"
         ></div>
 
         <!-- Dialog Window -->
-        <div 
+        <div
           class="relative w-full max-w-lg transform overflow-hidden rounded-2xl bg-white dark:bg-slate-900 p-6 sm:p-8 text-left shadow-2xl transition-all border border-slate-100 dark:border-slate-800 z-10"
           (click)="$event.stopPropagation()"
         >
@@ -38,7 +38,7 @@ import { IconComponent, IconName } from '../icon/icon.component';
 
           <div class="flex items-start gap-4">
             <!-- Icon Badge -->
-            <div 
+            <div
               class="flex-shrink-0 flex items-center justify-center w-12 h-12 rounded-2xl shadow-sm"
               [ngClass]="iconBadgeClass"
             >
@@ -54,18 +54,18 @@ import { IconComponent, IconName } from '../icon/icon.component';
                 {{ modalState()?.title }}
               </h3>
 
-              <!-- Message -->
-              <div class="mt-2.5 text-sm sm:text-base text-slate-600 dark:text-slate-300 leading-relaxed space-y-2">
-                @for (line of getMessageLines(); track $index) {
-                  <p [class.font-mono]="isPinLine(line)" class="break-words">{{ line }}</p>
-                }
-              </div>
+              <!-- Message (full message, no truncation) -->
+              <p class="mt-2.5 text-sm sm:text-base text-slate-600 dark:text-slate-300 leading-relaxed break-words">
+                {{ modalState()?.message }}
+              </p>
 
               <!-- Optional Technical Details / PIN Display -->
               @if (modalState()?.details) {
                 <div class="mt-4 p-4 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl">
-                  <p class="text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 font-semibold mb-1.5">Details</p>
-                  <p class="text-xs sm:text-sm font-mono text-slate-700 dark:text-slate-300 break-all leading-relaxed">
+                  <div class="flex items-center justify-between mb-1.5">
+                    <p class="text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 font-semibold">Details</p>
+                  </div>
+                  <p class="text-xs sm:text-sm font-mono text-slate-700 dark:text-slate-300 break-all leading-relaxed whitespace-pre-wrap">
                     {{ modalState()?.details }}
                   </p>
                 </div>
@@ -73,13 +73,26 @@ import { IconComponent, IconName } from '../icon/icon.component';
 
               <!-- PIN Display (if PIN is in message) -->
               @if (getPinFromMessage()) {
-                <div class="mt-4 p-4 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/60 dark:to-teal-950/60 border border-emerald-200 dark:border-emerald-800/60 rounded-xl text-center">
-                  <p class="text-xs uppercase tracking-wider text-emerald-600 dark:text-emerald-400 font-semibold mb-2">Your Access PIN</p>
-                  <p class="font-mono text-3xl sm:text-4xl font-extrabold bg-gradient-to-r from-emerald-600 to-teal-600 dark:from-emerald-400 dark:to-teal-400 bg-clip-text text-transparent tracking-widest">
+                <div class="mt-4 p-4 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/60 dark:to-teal-950/60 border border-emerald-200 dark:border-emerald-800/60 rounded-xl">
+                  <div class="flex items-center justify-between mb-2">
+                    <p class="text-xs uppercase tracking-wider text-emerald-600 dark:text-emerald-400 font-semibold">Your Access PIN</p>
+                    <button
+                      type="button"
+                      (click)="copyPinToClipboard()"
+                      class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                      [ngClass]="pinCopied() ? 'bg-emerald-600 text-white' : 'bg-white dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-700 hover:bg-emerald-100 dark:hover:bg-emerald-900/60'"
+                    >
+                      @if (pinCopied()) {
+                        <app-icon name="check" [size]="14" />
+                        Copied!
+                      } @else {
+                        <app-icon name="copy" [size]="14" />
+                        Copy PIN
+                      }
+                    </button>
+                  </div>
+                  <p class="font-mono text-3xl sm:text-4xl font-extrabold bg-gradient-to-r from-emerald-600 to-teal-600 dark:from-emerald-400 dark:to-teal-400 bg-clip-text text-transparent tracking-widest text-center">
                     {{ getPinFromMessage() }}
-                  </p>
-                  <p class="text-xs text-emerald-700/80 dark:text-emerald-300/80 mt-2">
-                    Share this PIN with your recipient
                   </p>
                 </div>
               }
@@ -115,6 +128,7 @@ import { IconComponent, IconName } from '../icon/icon.component';
 export class ModalComponent {
   private modalService = inject(ModalService);
   readonly modalState = this.modalService.modalState;
+  readonly pinCopied = signal<boolean>(false);
 
   @HostListener('document:keydown.escape')
   onEscape(): void {
@@ -129,10 +143,23 @@ export class ModalComponent {
 
   close(): void {
     this.modalService.close();
+    this.pinCopied.set(false);
   }
 
   confirm(): void {
     this.modalService.confirm();
+    this.pinCopied.set(false);
+  }
+
+  copyPinToClipboard(): void {
+    const pin = this.getPinFromMessage();
+    if (pin) {
+      navigator.clipboard.writeText(pin);
+      this.pinCopied.set(true);
+      setTimeout(() => {
+        this.pinCopied.set(false);
+      }, 2500);
+    }
   }
 
   get iconName(): IconName {
@@ -189,17 +216,6 @@ export class ModalComponent {
       default:
         return 'bg-blue-600 hover:bg-blue-700 shadow-blue-600/20';
     }
-  }
-
-  getMessageLines(): string[] {
-    const message = this.modalState()?.message || '';
-    // Split on newlines or periods followed by space for better readability
-    return message.split(/\n|(?<=\.)\s+(?=[A-Z])/).filter(line => line.trim());
-  }
-
-  isPinLine(line: string): boolean {
-    // Detect PIN-like patterns (6-digit numbers)
-    return /^\d{6}$/.test(line.trim());
   }
 
   getPinFromMessage(): string | null {
