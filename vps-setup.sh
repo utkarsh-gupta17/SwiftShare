@@ -107,15 +107,10 @@ fi
 # sudo apt install -y certbot python3-certbot-nginx
 # sudo certbot --nginx -d your-actual-domain.com
 
-# Build classpath for the backend
-echo "Building backend classpath..."
-cd target
-CLASSPATH="swiftshare-1.0-SNAPSHOT.jar"
-cd ..
-
-# Start backend with PM2
+# Start backend with PM2 (using explicit classpath — ensures main class is found without a manifest entry)
 echo "Starting backend with PM2..."
-pm2 start --name swiftshare-backend -- java -jar target/swiftshare-1.0-SNAPSHOT.jar
+CLASSPATH="target/swiftshare-1.0-SNAPSHOT.jar:$(mvn dependency:build-classpath -DincludeScope=runtime -Dmdep.outputFile=/dev/stdout -q)"
+pm2 start --name swiftshare-backend -- java -cp "$CLASSPATH" p2p.App
 
 # Serve Angular frontend with a static file server
 echo "Starting frontend with PM2 (static server)..."
