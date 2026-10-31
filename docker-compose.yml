@@ -1,0 +1,33 @@
+version: '3.9'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    image: swiftshare-backend
+    container_name: swiftshare-backend
+    ports:
+      - "8080:8080"
+    # Expose the dynamic port range for P2P file sharing (FileSharer binds ports 49152–65535)
+    expose:
+      - "49152-65535"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    image: swiftshare-frontend
+    container_name: swiftshare-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
