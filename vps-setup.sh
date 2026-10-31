@@ -72,7 +72,7 @@ server {
     listen 80;
     server_name _;
 
-    root /usr/share/nginx/html;
+    root /usr/share/nginx/html/ui/browser;
     index index.html;
 
     # Serve Angular static files
@@ -133,7 +133,7 @@ echo "Starting frontend with PM2 (static server)..."
 if [ -d "ui" ]; then
     cd ui
     # pm2 start npx --name swiftshare-frontend -- serve -s dist/ui -l 3000
-    pm2 start npx --name swiftshare-frontend -- serve -s dist/ui -l 3000 --no-clipboard
+    pm2 start npx --name swiftshare-frontend -- serve -s dist/ui/browser -l 3000 --no-clipboard
     cd ..
 else
     echo "Error: ui directory not found!"
