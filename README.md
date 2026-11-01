@@ -8,6 +8,12 @@ A lightweight, serverless file-sharing tool built with pure Java and Angular. Up
 
 ---
 
+## 🎬 Project Demo
+
+[![Watch Demo](https://img.youtube.com/vi/CITF_VBg4N0/maxresdefault.jpg)](https://youtu.be/CITF_VBg4N0)
+
+---
+
 ## Features at a Glance
 
 | Feature | Detail |
