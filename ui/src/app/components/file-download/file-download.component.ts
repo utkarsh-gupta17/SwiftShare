@@ -51,16 +51,6 @@ import { ModalService } from '../../services/modal.service';
               autocomplete="off"
               required
             />
-
-            <!-- Paste Button -->
-            <button
-              type="button"
-              (click)="pasteFromClipboard()"
-              class="absolute right-2 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-              [disabled]="isDownloading"
-            >
-              Paste
-            </button>
           </div>
 
           @if (errorMessage) {

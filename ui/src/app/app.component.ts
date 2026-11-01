@@ -92,8 +92,7 @@ export class AppComponent {
 
           // Show confirmation modal with PIN in the message so copy button works
           this.modalService.success(
-            'File Ready to Share!',
-            `"${file.name}" (${this.formatFileSize(file.size)}) is staged. Share PIN ${update.result.token} with your recipient.`,
+            'File Ready to Share!', `"${file.name}" (${this.formatFileSize(file.size)}) is now available to be shared.`,
             undefined
           );
         }
@@ -135,13 +134,14 @@ export class AppComponent {
     try {
       const result = await this.fileTransfer.downloadFile(pin);
 
-      // Find the session and mark as completed (it will expire naturally)
-      const sessions = this.sessions();
-      const sessionIndex = sessions.findIndex(s => s.token === pin);
+      // Remove the session since the file has been downloaded and is no longer available
+      this.sessions.update(sessions =>
+        sessions.filter(s => s.token !== pin)
+      );
 
       this.modalService.success(
         'Download Finished',
-        `Downloaded "${result.filename}" (${this.formatFileSize(result.size)}) directly from your peer!`
+        `Downloaded "${result.filename}" (${this.formatFileSize(result.size)}) directly from your peer! The file has been removed from the sender's session.`
       );
     } catch (error: any) {
       console.error('File download failed:', error);

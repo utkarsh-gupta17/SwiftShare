@@ -276,11 +276,34 @@ export class InviteCodeComponent implements OnInit, OnDestroy {
     const textToCopy = this.token || '';
     if (!textToCopy) return;
 
-    navigator.clipboard.writeText(textToCopy);
-    this.copied.set(true);
-    setTimeout(() => {
-      this.copied.set(false);
-    }, 2500);
+    try {
+      navigator.clipboard.writeText(textToCopy).then(() => {
+        this.copied.set(true);
+        setTimeout(() => this.copied.set(false), 2500);
+      }).catch(() => {
+        this.fallbackCopy(textToCopy);
+      });
+    } catch {
+      this.fallbackCopy(textToCopy);
+    }
+  }
+
+  private fallbackCopy(text: string): void {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    try {
+      document.execCommand('copy');
+      this.copied.set(true);
+      setTimeout(() => this.copied.set(false), 2500);
+    } catch {
+      // Silent fail
+    } finally {
+      document.body.removeChild(textarea);
+    }
   }
 
   formatFileSize(bytes: number): string {
