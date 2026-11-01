@@ -156,6 +156,7 @@
                   [fileSize]="session.fileSize"
                   [sessionNumber]="activeSessions().length - i"
                   [expiresInSeconds]="session.expiresInSeconds"
+                  [createdAt]="session.createdAt.getTime()"
                   [showDismiss]="true"
                   [colorScheme]="getSessionColorScheme(i)"
                   (onDismiss)="removeSession(session.id)"

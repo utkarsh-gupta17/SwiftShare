@@ -90,11 +90,11 @@ export class AppComponent {
           // Add to sessions array
           this.sessions.update(sessions => [...sessions, newSession]);
 
-          // Show confirmation toast-style notification
+          // Show confirmation modal with PIN in the message so copy button works
           this.modalService.success(
             'File Ready to Share!',
-            `"${file.name}" is staged. Share the PIN with your recipient.`,
-            `PIN: ${update.result.token}`
+            `"${file.name}" (${this.formatFileSize(file.size)}) is staged. Share PIN ${update.result.token} with your recipient.`,
+            undefined
           );
         }
       },

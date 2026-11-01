@@ -1,4 +1,4 @@
-import { Component, EventEmitter, Input, Output, signal, computed, OnInit, OnDestroy, OnChanges, SimpleChanges } from '@angular/core';
+import { Component, EventEmitter, Input, Output, signal, computed, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { IconComponent } from '../icon/icon.component';
 
@@ -11,7 +11,6 @@ import { IconComponent } from '../icon/icon.component';
       <div
         class="mt-4 p-4 sm:p-5 rounded-2xl border transition-all duration-300 animate-in slide-in-from-bottom-2"
         [ngClass]="cardStyleClass"
-        [@fadeSlideOut]="!isVisible()"
       >
         <!-- Header: Session info + Timer + Dismiss -->
         <div class="flex items-center justify-between gap-3 mb-3">
@@ -127,13 +126,14 @@ import { IconComponent } from '../icon/icon.component';
     }
   `]
 })
-export class InviteCodeComponent implements OnInit, OnDestroy, OnChanges {
+export class InviteCodeComponent implements OnInit, OnDestroy {
   @Input() port: number | null = null;
   @Input() token: string | null = null;
   @Input() fileName: string = '';
   @Input() fileSize: number = 0;
   @Input() sessionNumber: number | null = null;
   @Input() expiresInSeconds: number = 90; // Default 1.5 minutes
+  @Input() createdAt: number = 0; // Session creation timestamp in ms
   @Input() showDismiss: boolean = true;
   @Input() colorScheme: 'emerald' | 'blue' | 'violet' = 'emerald';
   @Output() onExpire = new EventEmitter<void>();
@@ -217,15 +217,12 @@ export class InviteCodeComponent implements OnInit, OnDestroy, OnChanges {
   }
 
   ngOnInit(): void {
-    this.timeLeft.set(this.expiresInSeconds);
+    // Calculate remaining time from createdAt timestamp to persist across tab switches
+    const elapsedMs = Date.now() - this.createdAt;
+    const elapsedSeconds = Math.floor(elapsedMs / 1000);
+    const remaining = Math.max(0, this.expiresInSeconds - elapsedSeconds);
+    this.timeLeft.set(remaining);
     this.startTimer();
-  }
-
-  ngOnChanges(changes: SimpleChanges): void {
-    if (changes['expiresInSeconds']) {
-      this.timeLeft.set(this.expiresInSeconds);
-      this.restartTimer();
-    }
   }
 
   ngOnDestroy(): void {
