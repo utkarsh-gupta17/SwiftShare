@@ -143,9 +143,11 @@ export class AppComponent {
         sessions.filter(s => s.token !== pin)
       );
 
-      this.modalService.success(
+      // NOTE: We cannot detect if user saved or cancelled the browser's download dialog.
+      // The file has been transferred regardless. We inform the user and let them decide.
+      this.modalService.info(
         'Transfer Complete',
-        `File "${result.filename}" (${this.formatFileSize(result.size)}) received from peer.`
+        `"${result.filename}" (${this.formatFileSize(result.size)}) has been received from the peer. The server copy has been removed. Please save the file using your browser\'s download dialog.`
       );
     } catch (error: any) {
       console.error('File download failed:', error);
