@@ -10,7 +10,19 @@ A lightweight, serverless file-sharing tool built with pure Java and Angular. Up
 
 ## 🎬 Project Demo
 
-[![Watch Demo](https://img.youtube.com/vi/CITF_VBg4N0/maxresdefault.jpg)](https://youtu.be/CITF_VBg4N0)
+<h2 align="center">🎬 Project Demo</h2>
+
+<p align="center">
+  <a href="https://youtu.be/CITF_VBg4N0">
+    <img
+      src="https://img.youtube.com/vi/CITF_VBg4N0/maxresdefault.jpg"
+      alt="▶ Watch File Sharing Project Demo on YouTube"
+      width="800"
+    />
+    <strong>▶ Click to watch the full demo</strong>
+  </a>
+  <br/>
+</p>
 
 ---
 
