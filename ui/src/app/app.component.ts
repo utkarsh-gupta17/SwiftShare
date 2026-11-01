@@ -134,14 +134,18 @@ export class AppComponent {
     try {
       const result = await this.fileTransfer.downloadFile(pin);
 
-      // Remove the session since the file has been downloaded and is no longer available
+      // Wait briefly before showing success — the browser save dialog is still open
+      // The user needs to click Save or Cancel in their browser's dialog
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // Remove the session since the file has been transferred and is no longer available
       this.sessions.update(sessions =>
         sessions.filter(s => s.token !== pin)
       );
 
       this.modalService.success(
-        'Download Finished',
-        `Downloaded "${result.filename}" (${this.formatFileSize(result.size)}) directly from your peer! The file has been removed from the sender's session.`
+        'Transfer Complete',
+        `File "${result.filename}" (${this.formatFileSize(result.size)}) received from peer.`
       );
     } catch (error: any) {
       console.error('File download failed:', error);
