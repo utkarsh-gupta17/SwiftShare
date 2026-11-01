@@ -49,50 +49,47 @@ import { IconComponent, IconName } from '../icon/icon.component';
               <!-- Title -->
               <h3
                 id="modal-title"
-                class="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white leading-tight tracking-tight"
+                class="text-lg sm:text-xl font-bold text-slate-900 dark:text-white leading-tight tracking-tight"
               >
                 {{ modalState()?.title }}
               </h3>
 
-              <!-- Message (full message, no truncation) -->
-              <p class="mt-3 text-base sm:text-lg text-slate-700 dark:text-slate-200 leading-relaxed font-medium break-words">
-                {{ modalState()?.message }}
+              <!-- Message (without PIN - PIN is shown in dedicated section below) -->
+              <p class="mt-2.5 text-sm sm:text-base text-slate-600 dark:text-slate-300 leading-relaxed break-words">
+                {{ getMessageWithoutPin() }}
               </p>
 
               <!-- PIN Display (if PIN is in message) -->
               @if (getPinFromMessage()) {
-                <div class="mt-5 p-5 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/60 dark:to-teal-950/60 border border-emerald-200 dark:border-emerald-800/60 rounded-xl">
-                  <div class="flex items-center justify-between mb-3">
-                    <p class="text-xs uppercase tracking-wider text-emerald-600 dark:text-emerald-400 font-bold">Your Access PIN</p>
+                <div class="mt-4 p-3 sm:p-4 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/60 dark:to-teal-950/60 border border-emerald-200 dark:border-emerald-800/60 rounded-xl">
+                  <div class="flex items-center justify-between mb-2">
+                    <p class="text-[10px] uppercase tracking-wider text-emerald-600 dark:text-emerald-400 font-bold">Your PIN</p>
                     <button
                       type="button"
                       (click)="copyPinToClipboard()"
-                      class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
-                      [ngClass]="pinCopied() ? 'bg-emerald-600 text-white shadow-md' : 'bg-white dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-700 hover:bg-emerald-100 dark:hover:bg-emerald-900/60'"
+                      class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold transition-all"
+                      [ngClass]="pinCopied() ? 'bg-emerald-600 text-white shadow-sm' : 'bg-white dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-700 hover:bg-emerald-100 dark:hover:bg-emerald-900/60'"
                     >
                       @if (pinCopied()) {
-                        <app-icon name="check" [size]="14" />
+                        <app-icon name="check" [size]="12" />
                         Copied!
                       } @else {
-                        <app-icon name="copy" [size]="14" />
-                        Copy PIN
+                        <app-icon name="copy" [size]="12" />
+                        Copy
                       }
                     </button>
                   </div>
-                  <p class="font-mono text-4xl sm:text-5xl font-extrabold bg-gradient-to-r from-emerald-600 to-teal-600 dark:from-emerald-400 dark:to-teal-400 bg-clip-text text-transparent tracking-widest text-center">
+                  <p class="font-mono text-2xl sm:text-3xl font-extrabold bg-gradient-to-r from-emerald-600 to-teal-600 dark:from-emerald-400 dark:to-teal-400 bg-clip-text text-transparent tracking-widest text-center">
                     {{ getPinFromMessage() }}
-                  </p>
-                  <p class="text-sm text-emerald-700/80 dark:text-emerald-300/80 mt-3 text-center font-medium">
-                    Share this PIN with your recipient
                   </p>
                 </div>
               }
 
               <!-- Optional Technical Details -->
               @if (modalState()?.details) {
-                <div class="mt-5 p-4 bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl">
-                  <p class="text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 font-bold mb-2">Details</p>
-                  <p class="text-xs sm:text-sm font-mono text-slate-600 dark:text-slate-300 break-all leading-relaxed whitespace-pre-wrap">
+                <div class="mt-4 p-3 bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl">
+                  <p class="text-[10px] uppercase tracking-wider text-slate-400 dark:text-slate-500 font-bold mb-1">Details</p>
+                  <p class="text-xs font-mono text-slate-600 dark:text-slate-300 break-all leading-relaxed whitespace-pre-wrap">
                     {{ modalState()?.details }}
                   </p>
                 </div>
@@ -155,12 +152,54 @@ export class ModalComponent {
   copyPinToClipboard(): void {
     const pin = this.getPinFromMessage();
     if (pin) {
-      navigator.clipboard.writeText(pin);
-      this.pinCopied.set(true);
-      setTimeout(() => {
-        this.pinCopied.set(false);
-      }, 2500);
+      try {
+        navigator.clipboard.writeText(pin).then(() => {
+          this.pinCopied.set(true);
+          setTimeout(() => this.pinCopied.set(false), 2500);
+        }).catch(() => {
+          // Fallback for browsers that don't support clipboard API
+          this.fallbackCopy(pin);
+        });
+      } catch {
+        this.fallbackCopy(pin);
+      }
     }
+  }
+
+  private fallbackCopy(text: string): void {
+    // Create a temporary textarea element
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    try {
+      document.execCommand('copy');
+      this.pinCopied.set(true);
+      setTimeout(() => this.pinCopied.set(false), 2500);
+    } catch {
+      // Silent fail - copy didn't work
+    } finally {
+      document.body.removeChild(textarea);
+    }
+  }
+
+  getMessageWithoutPin(): string {
+    const message = this.modalState()?.message || '';
+    const pin = this.getPinFromMessage();
+    if (pin) {
+      // Remove "Share PIN XXXXXX" pattern from message
+      return message.replace(new RegExp(`\\s*Share\\s+PIN\\s+${pin}\\s*`, 'i'), '').trim();
+    }
+    return message;
+  }
+
+  getPinFromMessage(): string | null {
+    const message = this.modalState()?.message || '';
+    // Look for 6-digit PIN pattern with word boundaries
+    const pinMatch = message.match(/\b(\d{6})\b/);
+    return pinMatch ? pinMatch[1] : null;
   }
 
   get iconName(): IconName {
@@ -217,12 +256,5 @@ export class ModalComponent {
       default:
         return 'bg-blue-600 hover:bg-blue-700 shadow-blue-600/20';
     }
-  }
-
-  getPinFromMessage(): string | null {
-    const message = this.modalState()?.message || '';
-    // Look for 6-digit PIN pattern
-    const pinMatch = message.match(/\b(\d{6})\b/);
-    return pinMatch ? pinMatch[1] : null;
   }
 }
