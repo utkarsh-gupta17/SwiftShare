@@ -1,6 +1,6 @@
 # SwiftShare UI (Angular Edition)
 
-Modern, responsive, and secure frontend for the SwiftShare P2P file sharing application, migrated to **Angular 19** with **Tailwind CSS**, **Signals**, and **Standalone Components**.
+Modern, responsive, and secure frontend for the SwiftShare file sharing application, migrated to **Angular 19** with **Tailwind CSS**, **Signals**, and **Standalone Components**.
 
 ## ✨ Enhancements & Features
 

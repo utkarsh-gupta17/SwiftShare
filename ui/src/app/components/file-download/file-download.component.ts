@@ -18,7 +18,7 @@ import { ModalService } from '../../services/modal.service';
         <div>
           <h3 class="text-sm sm:text-base font-bold text-blue-950 dark:text-blue-100">Receive a Shared File</h3>
           <p class="text-xs sm:text-sm text-blue-700/90 dark:text-blue-300/90 mt-0.5 leading-relaxed">
-            Enter the 6-digit access PIN provided by the sender. The file will stream directly from their peer session.
+            Enter the 6-digit access PIN provided by the sender. The file will stream from the server.
           </p>
         </div>
       </div>
@@ -69,7 +69,7 @@ import { ModalService } from '../../services/modal.service';
         >
           @if (isDownloading) {
             <app-icon name="loader-2" [size]="20" className="animate-spin text-white" />
-            <span>Connecting to Peer & Downloading...</span>
+            <span>Connecting & Downloading...</span>
           } @else {
             <app-icon name="download" [size]="20" />
             <span>Download File</span>
@@ -81,7 +81,7 @@ import { ModalService } from '../../services/modal.service';
       <div class="pt-2 border-t border-slate-100 dark:border-slate-800 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-slate-500 dark:text-slate-400">
         <div class="flex items-center gap-2">
           <app-icon name="shield" [size]="15" className="text-emerald-500 dark:text-emerald-400 flex-shrink-0" />
-          <span>Direct P2P transfer, protected by access PIN</span>
+          <span>Fast transfer, protected by access PIN</span>
         </div>
         <div class="flex items-center gap-2">
           <app-icon name="server" [size]="15" className="text-blue-500 dark:text-blue-400 flex-shrink-0" />

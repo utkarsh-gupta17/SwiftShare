@@ -3,11 +3,8 @@ package p2p.handler;
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
-import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
@@ -15,8 +12,8 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import p2p.service.FileSharer;
-import p2p.utils.MultipartParser;
-import p2p.utils.CompressionUtils;
+import p2p.utils.RateLimitUtils;
+import p2p.utils.StreamingMultipartParser;
 
 // Receives multipart upload, validates file type & size, and starts sharing session
 public class UploadHandler implements HttpHandler {
@@ -31,28 +28,18 @@ public class UploadHandler implements HttpHandler {
     private static final int MAX_UPLOADS_PER_MIN = 10;
     private static final long WINDOW_DURATION_MS = 60_000L;
 
-    private static final ConcurrentHashMap<String, RateLimitEntry> ipRateLimits = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, RateLimitUtils.RateLimitEntry> ipRateLimits = new ConcurrentHashMap<>();
 
     // Common file types we allow
     private static final Set<String> ALLOWED_EXTENSIONS = Set.of(
         ".txt", ".pdf", ".jpg", ".jpeg", ".png", ".gif", ".webp",
         ".zip", ".tar", ".gz", ".7z", ".doc", ".docx", ".xls", ".xlsx", ".csv",
-        ".mp3", ".mp4", ".mkv", ".json", ".xml"
+        ".mp3", ".mp4", ".mkv", ".json", ".xml", ".bin"
     );
 
     public UploadHandler(String uploadDir, FileSharer fileSharer) {
         this.uploadDir = uploadDir;
         this.fileSharer = fileSharer;
-    }
-
-    private static class RateLimitEntry {
-        long windowStart;
-        int count;
-
-        RateLimitEntry(long windowStart) {
-            this.windowStart = windowStart;
-            this.count = 1;
-        }
     }
 
     @Override
@@ -75,7 +62,7 @@ public class UploadHandler implements HttpHandler {
 
         // Check if this IP is making too many upload requests
         String clientIp = exchange.getRemoteAddress().getAddress().getHostAddress();
-        if (checkRateLimit(clientIp)) {
+        if (RateLimitUtils.checkRateLimit(ipRateLimits, clientIp, MAX_UPLOADS_PER_MIN, WINDOW_DURATION_MS)) {
             sendTextResponse(exchange, 429, "Too Many Requests: Please wait before uploading another file.");
             return;
         }
@@ -109,54 +96,56 @@ public class UploadHandler implements HttpHandler {
             } catch (NumberFormatException ignored) {}
         }
 
-        // Read stream with running size check
-        byte[] payloadBytes;
-        try (InputStream in = exchange.getRequestBody();
-             ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
-
-            byte[] buffer = new byte[8192];
-            int read;
-            long total = 0;
-
-            while ((read = in.read(buffer)) != -1) {
-                total += read;
-                if (total > MAX_FILE_SIZE) {
-                    sendTextResponse(exchange, 413, "Payload Too Large: File exceeds 500 MB limit");
-                    return;
-                }
-                baos.write(buffer, 0, read);
-            }
-            payloadBytes = baos.toByteArray();
+        File uploadFolder = new File(uploadDir);
+        if (!uploadFolder.exists()) {
+            uploadFolder.mkdirs();
         }
 
-        // Parse file from form body
-        MultipartParser parser = new MultipartParser(payloadBytes, boundary);
-        MultipartParser.ParseResult parsed = parser.parse();
+        // Stream file to temporary location
+        File tempFile = File.createTempFile("upload-stream-", ".tmp", uploadFolder);
+        StreamingMultipartParser.ParseResult parsed;
+        try {
+            StreamingMultipartParser parser = new StreamingMultipartParser(exchange.getRequestBody(), boundary);
+            parsed = parser.parseTo(tempFile);
+        } catch (Exception e) {
+            if (tempFile.exists()) tempFile.delete();
+            sendTextResponse(exchange, 400, "Bad Request: Failed to parse multipart data");
+            return;
+        }
 
-        if (parsed == null || parsed.fileContent == null || parsed.fileContent.length == 0) {
+        if (parsed == null || !tempFile.exists() || tempFile.length() == 0) {
+            if (tempFile.exists()) tempFile.delete();
             sendTextResponse(exchange, 400, "Bad Request: No file data found");
+            return;
+        }
+
+        if (tempFile.length() > MAX_FILE_SIZE) {
+            tempFile.delete();
+            sendTextResponse(exchange, 413, "Payload Too Large: File exceeds 500 MB limit");
             return;
         }
 
         String filename = cleanFilename(parsed.filename);
         if (!isAllowedType(filename)) {
+            tempFile.delete();
             sendTextResponse(exchange, 415, "Unsupported File Type: Disallowed file extension");
             return;
         }
 
-        // Save file to temp folder with a unique UUID prefix
+        // Rename file with a unique UUID prefix
         String uniqueName = UUID.randomUUID() + "_" + filename;
-        String savePath = uploadDir + File.separator + uniqueName;
-
-        // Compress file content before save
-        byte[] compressed = CompressionUtils.compress(parsed.fileContent, filename);
-
-        try (FileOutputStream fos = new FileOutputStream(savePath)) {
-            fos.write(compressed);
+        File finalFile = new File(uploadDir, uniqueName);
+        if (!tempFile.renameTo(finalFile)) {
+            // fallback to copying if rename fails
+            try (var in = new java.io.FileInputStream(tempFile);
+                 var out = new java.io.FileOutputStream(finalFile)) {
+                in.transferTo(out);
+            }
+            tempFile.delete();
         }
 
         // Stage file with sharer and start listening on socket
-        int port = fileSharer.offerFile(savePath);
+        int port = fileSharer.offerFile(finalFile.getAbsolutePath());
         String token = fileSharer.getPinForPort(port);
 
         new Thread(() -> fileSharer.startFileServer(port)).start();
@@ -169,20 +158,6 @@ public class UploadHandler implements HttpHandler {
         try (OutputStream out = exchange.getResponseBody()) {
             out.write(resBytes);
         }
-    }
-
-    private boolean checkRateLimit(String ip) {
-        long now = System.currentTimeMillis();
-        RateLimitEntry entry = ipRateLimits.compute(ip, (key, existing) -> {
-            if (existing == null || (now - existing.windowStart) > WINDOW_DURATION_MS) {
-                return new RateLimitEntry(now);
-            } else {
-                existing.count++;
-                return existing;
-            }
-        });
-
-        return entry.count > MAX_UPLOADS_PER_MIN;
     }
 
     private boolean isAllowedType(String name) {

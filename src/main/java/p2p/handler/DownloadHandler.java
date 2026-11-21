@@ -12,8 +12,10 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.ConcurrentHashMap;
 import p2p.service.FileSharer;
 import p2p.utils.CompressionUtils;
+import p2p.utils.RateLimitUtils;
 
 // Handles GET requests for downloading files, checks PIN token and streams file
 public class DownloadHandler implements HttpHandler {
@@ -21,6 +23,12 @@ public class DownloadHandler implements HttpHandler {
     private final FileSharer fileSharer;
     // Match FileSharer's session window — 5 minutes for the download to complete
     private static final int SOCKET_TIMEOUT = 300000;
+
+    // Rate limit: 10 downloads per IP per minute
+    private static final int MAX_DOWNLOADS_PER_MIN = 10;
+    private static final long WINDOW_DURATION_MS = 60_000L;
+
+    private static final ConcurrentHashMap<String, RateLimitUtils.RateLimitEntry> ipRateLimits = new ConcurrentHashMap<>();
 
     public DownloadHandler(FileSharer fileSharer) {
         this.fileSharer = fileSharer;
@@ -41,6 +49,13 @@ public class DownloadHandler implements HttpHandler {
 
         if (!exchange.getRequestMethod().equalsIgnoreCase("GET")) {
             sendResponse(exchange, 405, "Method Not Allowed");
+            return;
+        }
+
+        // Check rate limiting
+        String clientIp = exchange.getRemoteAddress().getAddress().getHostAddress();
+        if (RateLimitUtils.checkRateLimit(ipRateLimits, clientIp, MAX_DOWNLOADS_PER_MIN, WINDOW_DURATION_MS)) {
+            sendResponse(exchange, 429, "Too Many Requests: Please wait before downloading another file.");
             return;
         }
 

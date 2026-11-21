@@ -1,6 +1,6 @@
-# SwiftShare — Secure Peer-to-Peer File Transfer
+# SwiftShare — Fast & Private File Transfer
 
-A lightweight, serverless file-sharing tool built with pure Java and Angular. Upload a file, get a 6-digit PIN, share the PIN with anyone on the same network — they paste it in and the file streams directly from your machine. No cloud, no accounts, no middlemen.
+A lightweight file-sharing tool built with pure Java and Angular. Upload a file, get a 6-digit PIN, share the PIN with anyone — they paste it in and download the file securely. No cloud, no accounts, no middlemen.
 
 ![Java](https://img.shields.io/badge/Java-17-orange?style=flat)
 ![Angular](https://img.shields.io/badge/Angular-19-red?style=flat)
@@ -31,11 +31,11 @@ A lightweight, serverless file-sharing tool built with pure Java and Angular. Up
 | Feature | Detail |
 |---|---|
 | **Zero-dependency backend** | Plain Java 17 + `com.sun.net.httpserver`. No Spring, no servlet container, no external JARs beyond the JDK. |
-| **Direct peer transfer** | File bytes travel from sender's machine → raw TCP socket → receiver's browser. Nothing is stored on a remote server. |
+| **Direct socket transfer** | File bytes are staged temporarily on the backend and streamed over a dedicated local TCP socket to the downloader. |
 | **6-digit PIN access** | Every upload session generates a unique PIN via `SecureRandom`. Only someone with the PIN can download the file. |
 | **500 MB file cap** | Hard limit enforced at three layers: `Content-Length` header, streaming byte-count, and post-parse check. |
 | **File type allowlist** | Backend enforces an extension whitelist (`.txt`, `.pdf`, `.jpg`, `.png`, `.zip`, `.docx`, `.mp4`, `.json`, etc.) and rejects all executables and scripts. |
-| **Rate limiting** | Max 10 upload requests per IP per minute using atomic sliding-window counters. |
+| **Rate limiting** | Max 10 upload and download requests per IP per minute using atomic sliding-window counters. |
 | **Session expiry** | If nobody connects within **5 minutes**, the `ServerSocket` times out and the staged temp file is deleted automatically. |
 | **Streaming architecture** | Files are transferred in 8 KB chunks. Memory usage is constant regardless of file size — no file is ever loaded entirely into RAM. |
 | **Concurrent sessions** | `ConcurrentHashMap` stores PIN→port and port→filePath entries; an `ExecutorService` thread pool handles all HTTP requests. |
@@ -50,27 +50,30 @@ A lightweight, serverless file-sharing tool built with pure Java and Angular. Up
 
 ## Architecture
 
-### Hybrid P2P Model
+### Ephemeral Socket Transfer Model
 
-SwiftShare uses a hybrid peer-to-peer architecture — the backend coordinates authentication and metadata, but file bytes travel directly between the two peers over a raw TCP socket:
+SwiftShare uses an ephemeral socket architecture — the backend coordinates authentication and metadata, staging the uploaded file locally and streaming bytes to the downloader over an internal TCP socket:
 
 ```mermaid
 graph LR
-    Sender["Sender Browser<br/>(port 4200)"]
-    Backend["Java Backend<br/>(port 8080)"]
-    JVM["Sender JVM<br/>ServerSocket"]
-    Proxy["Java Backend<br/>(proxy)"]
-    Receiver["Receiver Browser<br/>(port 4200)"]
+    Sender["Sender Browser"]
+    Backend["Java Backend<br/>(HTTP :8080)"]
+    Storage["Temporary Disk Storage<br/>(Streaming Parser)"]
+    Socket["Ephemeral ServerSocket<br/>(:port on localhost)"]
+    Receiver["Receiver Browser"]
 
-    Sender -->|"POST /upload"| Backend
-    Backend -->|"{port, token}"| JVM
-    Receiver -->|"GET /download?token"| Proxy
-    Proxy -->|"TCP connect(localhost, port)"| JVM
-    JVM -->|"raw TCP socket<br/>Filename + file bytes"| Proxy
-    Proxy -->|"200 blob<br/>Content-Disposition: attachment"| Receiver
+    Sender -->|"1. POST /upload (multipart stream)"| Backend
+    Backend -->|"2. Stream to disk directly"| Storage
+    Backend -->|"3. Start daemon socket server"| Socket
+    Backend -->|"4. Return {port, PIN}"| Sender
+
+    Receiver -->|"5. GET /download?token=PIN"| Backend
+    Backend -->|"6. Connect & stream from socket"| Socket
+    Socket -->|"7. Read & serve"| Storage
+    Backend -->|"8. Attachment stream"| Receiver
 ```
 
-Key insight: the backend **never holds file bytes**. On the upload side it stages the file briefly (compressed) to hand it off to a peer socket; on the download side it proxies the stream from sender to receiver without caching it.
+Key insight: the backend stages the file temporarily (with automatic compression) to serve it via a dedicated socket session upon valid PIN entry. Files are cleaned up immediately following transfer.
 
 ---
 
@@ -160,35 +163,33 @@ SwiftShare/
 
 1. User drops a file onto the drop zone (or clicks to select).
 2. Angular's `HttpClient` sends `POST /api/upload` as `multipart/form-data` with `reportProgress: true`.
-3. `UploadHandler` checks the IP rate limit, validates `Content-Length`, reads the body as a streaming byte stream (hard-stop at 500 MB), and parses the multipart body with `MultipartParser`.
-4. The file extension is checked against the allowlist. If blocked, `415 Unsupported Media Type` is returned.
-5. **Compression is applied** — `CompressionUtils.compress()` selects the optimal algorithm (DEFLATE for 1KB–1MB, GZIP for >100KB) and compresses the file data.
-6. The compressed file is written to `java.io.tmpdir/p2p-file-uploads/<uuid>_<originalname>`.
-7. `FileSharer.offerFile()` picks a free port in 49152–65535, generates a `SecureRandom` 6-digit PIN, and stores both in two `ConcurrentHashMap`s.
-8. A daemon thread starts `FileSharer.startFileServer(port)` — a `ServerSocket` that blocks on `accept()`, waiting for the receiver.
-9. The backend responds `200 { "port": N, "token": "XXXXXX" }`. Angular displays the PIN and a "Copy PIN" button.
+3. `UploadHandler` checks the IP rate limit, validates `Content-Length`, and streams the multipart body directly to a temporary file on disk using `StreamingMultipartParser` (hard-stop at 500 MB).
+4. The file extension is checked against the allowlist. If blocked, `415 Unsupported Media Type` is returned and the temp file is deleted.
+5. The streamed temp file is renamed to `java.io.tmpdir/p2p-file-uploads/<uuid>_<originalname>`.
+6. `FileSharer.offerFile()` picks a free port in 49152–65535, generates a `SecureRandom` 6-digit PIN, and stores both in two `ConcurrentHashMap`s.
+7. A daemon thread starts `FileSharer.startFileServer(port)` — a `ServerSocket` that blocks on `accept()`, waiting for the receiver.
+8. The backend responds `200 { "port": N, "token": "XXXXXX" }`. Angular displays the PIN and a "Copy PIN" button.
 
 ```mermaid
 sequenceDiagram
     participant S as Sender Browser
     participant UH as UploadHandler (port 8080)
-    participant CU as CompressionUtils
+    participant SP as StreamingMultipartParser
     participant FS as FileSharer
     participant SS as ServerSocket (daemon thread)
 
-    S->>UH: POST /upload (multipart/form-data)
-    Note over UH: 1. Rate limit check (10/IP/min, else 429)<br/>2. Content-Length + streaming byte count (hard stop at 500 MB, else 413)<br/>3. MultipartParser extracts the file
-    Note over UH: 4. Extension allowlist check (else 415)
-    UH->>CU: 5. compress(data, filename) — DEFLATE for 1KB–1MB, GZIP above 100KB
-    CU-->>UH: compressed bytes
-    Note over UH: 6. Write to java.io.tmpdir/p2p-file-uploads/uuid_name
-    UH->>FS: 7. offerFile(path)
+    S->>UH: POST /upload (multipart/form-data stream)
+    Note over UH: 1. Rate limit check (10/IP/min, else 429)<br/>2. Content-Length validation (hard stop at 500 MB, else 413)
+    UH->>SP: 3. Stream body directly to disk
+    SP-->>UH: 4. Temp file path
+    Note over UH: 5. Extension allowlist check (else 415, delete temp)
+    UH->>FS: 6. offerFile(path)
     Note over FS: Free port in 49152–65535 + SecureRandom 6-digit PIN<br/>stored in two ConcurrentHashMaps
     FS-->>UH: port
     UH->>FS: getPinForPort(port)
     FS-->>UH: token
-    UH->>SS: 8. Start daemon thread — startFileServer(port), accept() with 5-minute timeout
-    UH-->>S: 9. 200 {"port": N, "token": "XXXXXX"}
+    UH->>SS: 7. Start daemon thread — startFileServer(port), accept() with 5-minute timeout
+    UH-->>S: 8. 200 {"port": N, "token": "XXXXXX"}
     Note over S: PIN shown with a Copy button
 ```
 
@@ -202,12 +203,13 @@ sequenceDiagram
     participant S as TCP socket (localhost:port)
 
     R->>DH: GET /download?token=XXXXXX
-    DH->>FS: 1. getPortByPin(token)
-    DH->>FS: 2. validatePin(port, token)
-    FS-->>DH: 3. return port
+    Note over DH: 1. Rate limit check (10/IP/min, else 429)
+    DH->>FS: 2. getPortByPin(token)
+    DH->>FS: 3. validatePin(port, token)
+    FS-->>DH: 4. return port
     DH->>S: TCP connect(localhost, port)
-    S-->>DH: 4. "Filename: report.pdf" + compressed file bytes
-    Note over DH: 5. Write to temp file<br/>6. Decompress via CompressionUtils.decompress()
+    S-->>DH: 5. "Filename: report.pdf" + file bytes
+    Note over DH: 6. Stream bytes to temp file
     DH-->>R: 7. 200 blob, Content-Disposition: attachment
     Note over R: 8. Browser save dialog fires
     DH->>FS: 9. cleanupFileTransfer(port) — delete staged file, remove PIN and port
@@ -239,13 +241,12 @@ stateDiagram-v2
 
 ```mermaid
 graph TD
-    A["User Request"] --> B["Rate Limiter<br/>Layer 1: 10 req/min per IP; HTTP 429 on violation"]
+    A["User Request"] --> B["Rate Limiter<br/>Layer 1: 10 req/min per IP on Upload & Download; HTTP 429 on violation"]
     B --> C["Size Checker<br/>Layer 2: Content-Length header + streaming byte-count + post-parse"]
     C --> D["Extension Guard<br/>Layer 3: allowlist only; executables/scripts blocked; HTTP 415 on fail"]
     D --> E["PIN Validator<br/>Layer 4: SecureRandom 6-digit; 403 on mismatch; single-use token"]
     E --> F["Socket Timeout<br/>Layer 5: 5-minute ServerSocket timeout; automatic cleanup"]
-    F --> G["Compression<br/>Layer 6: files stored compressed; auto algorithm selection"]
-    G --> H["File Transfer"]
+    F --> G["File Transfer"]
 ```
 
 
@@ -383,10 +384,9 @@ Access-Control-Expose-Headers: Content-Disposition, Content-Length
 - Signals for reactive state management (no RxJS)
 - Production-ready build output for static hosting
 
-**3. Raw TCP File Transfer**
-- Maximum throughput without encryption overhead
-- No cloud storage costs or bandwidth limits
-- Direct peer-to-peer connection
+**3. Raw TCP Socket Streaming**
+- High throughput socket transfer directly from staged storage
+- Ephemeral port assigned per transfer session
 
 **4. Atomic Data Structures**
 - `ConcurrentHashMap` prevents race conditions without locks
