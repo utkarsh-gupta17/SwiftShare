@@ -20,8 +20,8 @@ public class FileSharer {
     // Maps port -> 6-digit access PIN
     private final ConcurrentHashMap<Integer, String> accessTokens;
 
-    // 5 minute window for a receiver to connect before the session expires
-    private static final int TIMEOUT_MS = 300000;
+    // 2 minute window for a receiver to connect before the session expires
+    private static final int TIMEOUT_MS = 120000;
 
     public FileSharer() {
         this.availableFiles = new ConcurrentHashMap<>();

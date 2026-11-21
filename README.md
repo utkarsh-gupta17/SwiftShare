@@ -36,7 +36,7 @@ A lightweight file-sharing tool built with pure Java and Angular. Upload a file,
 | **500 MB file cap** | Hard limit enforced on `Content-Length` and verified on disk post-stream before registering the session. |
 | **File type allowlist** | Backend enforces an extension whitelist (`.txt`, `.pdf`, `.jpg`, `.png`, `.zip`, `.docx`, `.mp4`, `.json`, etc.) and rejects all executables and scripts. |
 | **Rate limiting** | Max 10 upload and download requests per IP per minute using atomic sliding-window counters. |
-| **Session expiry** | If nobody connects within **5 minutes**, the `ServerSocket` times out and the staged temp file is deleted automatically. |
+| **Session expiry** | If nobody connects within **2 minutes**, the `ServerSocket` times out and the staged temp file is deleted automatically. |
 | **Streaming upload** | Multipart body is streamed directly to temporary disk storage in 8 KB chunks with minimal memory footprint during upload. |
 | **Concurrent Sessions** | `ConcurrentHashMap` stores PIN→port and port→filePath entries; an `ExecutorService` thread pool (10 worker threads) processes HTTP API requests. |
 | **Thread-safe** | Thread-safe concurrent collections (`ConcurrentHashMap`) manage shared session mappings and rate-limiting state without external synchronization. |
@@ -189,7 +189,7 @@ sequenceDiagram
     FS-->>UH: port
     UH->>FS: getPinForPort(port)
     FS-->>UH: token
-    UH->>SS: 8. Start daemon thread — startFileServer(port), accept() with 5-minute timeout
+    UH->>SS: 8. Start daemon thread — startFileServer(port), accept() with 2-minute timeout
     UH-->>S: 9. 200 {"port": N, "token": "XXXXXX"}
     Note over S: PIN shown with a Copy button
 ```
@@ -227,14 +227,14 @@ stateDiagram-v2
     Active --> Transferring : Receiver enters correct PIN
     Transferring --> Decompressing : File received
     Decompressing --> Expired : Transfer complete\n(cleanupFileTransfer called)
-    Active --> Expired : 5-minute timeout\n(SocketTimeoutException)
+    Active --> Expired : 2-minute timeout\n(SocketTimeoutException)
     Expired --> [*]
 ```
 
 - The PIN is generated with `SecureRandom` — not `Math.random()`.
 - `validatePin()` is checked on every download request; a wrong PIN gets `403`.
 - Sessions are **single-use**: once the file is downloaded, the PIN is immediately invalidated.
-- If the sender closes the browser or 5 minutes pass with no download, `cleanupFileTransfer()` is called and the staged temp file is deleted.
+- If the sender closes the browser or 2 minutes pass with no download, `cleanupFileTransfer()` is called and the staged temp file is deleted.
 
 ---
 
@@ -246,7 +246,7 @@ graph TD
     B --> C["Size Checker<br/>Layer 2: Content-Length header + post-stream disk size check"]
     C --> D["Extension Guard<br/>Layer 3: allowlist only; executables/scripts blocked; HTTP 415 on fail"]
     D --> E["PIN Validator<br/>Layer 4: SecureRandom 6-digit; 403 on mismatch; single-use token"]
-    E --> F["Socket Timeout<br/>Layer 5: 5-minute ServerSocket timeout; automatic cleanup"]
+    E --> F["Socket Timeout<br/>Layer 5: 2-minute ServerSocket timeout; automatic cleanup"]
     F --> G["File Transfer"]
 ```
 
@@ -355,7 +355,7 @@ Access-Control-Expose-Headers: Content-Disposition, Content-Length
 | **Concurrent Requests** | 10-thread ExecutorService | Fixed thread pool handling concurrent API requests |
 | **Transfer Mechanism** | Raw TCP socket + compression | Compressed data = faster transfer |
 | **Compression** | DEFLATE/GZIP strategy selection | Optimal compression per file size |
-| **Session Timeout** | 5-minute socket timeout | Automatic resource cleanup |
+| **Session Timeout** | 2-minute socket timeout | Automatic resource cleanup |
 | **Storage Footprint** | Compressed temp files in `java.io.tmpdir/p2p-file-uploads/` | Reduced disk usage |
 
 ---

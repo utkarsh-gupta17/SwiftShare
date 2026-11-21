@@ -132,7 +132,7 @@ export class InviteCodeComponent implements OnInit, OnDestroy {
   @Input() fileName: string = '';
   @Input() fileSize: number = 0;
   @Input() sessionNumber: number | null = null;
-  @Input() expiresInSeconds: number = 90; // Default 1.5 minutes
+  @Input() expiresInSeconds: number = 120; // Default 2 minutes
   @Input() createdAt: number = 0; // Session creation timestamp in ms
   @Input() showDismiss: boolean = true;
   @Input() colorScheme: 'emerald' | 'blue' | 'violet' = 'emerald';
@@ -141,7 +141,7 @@ export class InviteCodeComponent implements OnInit, OnDestroy {
   @Output() onReset = new EventEmitter<void>();
 
   readonly copied = signal<boolean>(false);
-  readonly timeLeft = signal<number>(90);
+  readonly timeLeft = signal<number>(120);
   readonly isVisible = signal<boolean>(true);
   private timerInterval: ReturnType<typeof setInterval> | null = null;
   private isExpired = false;

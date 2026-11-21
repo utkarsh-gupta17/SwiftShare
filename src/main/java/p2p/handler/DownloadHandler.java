@@ -21,8 +21,8 @@ import p2p.utils.RateLimitUtils;
 public class DownloadHandler implements HttpHandler {
 
     private final FileSharer fileSharer;
-    // Match FileSharer's session window — 5 minutes for the download to complete
-    private static final int SOCKET_TIMEOUT = 300000;
+    // Match FileSharer's session window — 2 minutes for the download to complete
+    private static final int SOCKET_TIMEOUT = 120000;
 
     // Rate limit: 10 downloads per IP per minute
     private static final int MAX_DOWNLOADS_PER_MIN = 10;

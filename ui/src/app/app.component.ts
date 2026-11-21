@@ -84,7 +84,7 @@ export class AppComponent {
             token: update.result.token,
             port: update.result.port,
             createdAt: new Date(),
-            expiresInSeconds: 90, // 1.5 minutes
+            expiresInSeconds: 120, // 2 minutes
           };
 
           // Add to sessions array
