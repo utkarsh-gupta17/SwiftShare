@@ -5,7 +5,7 @@ import java.nio.charset.StandardCharsets;
 
 /**
  * A streaming multipart/form-data parser that writes uploaded file directly to a destination stream/file,
- * keeping memory footprint minimal.
+ * keeping memory footprint minimal and throughput high.
  */
 public class StreamingMultipartParser {
 
@@ -89,41 +89,60 @@ public class StreamingMultipartParser {
 
         // Stream the body until the boundary: \r\n--boundary
         byte[] boundaryBytes = ("\r\n--" + boundary).getBytes(StandardCharsets.UTF_8);
+        int boundaryLen = boundaryBytes.length;
 
         try (FileOutputStream fos = new FileOutputStream(targetFile);
-             BufferedOutputStream bos = new BufferedOutputStream(fos)) {
+             BufferedOutputStream bos = new BufferedOutputStream(fos, 64 * 1024)) {
 
-            // We use a small circular/sliding buffer or a lookahead to avoid writing the boundary to the file
-            int boundaryLen = boundaryBytes.length;
-            byte[] buffer = new byte[8192];
-            byte[] lookahead = new byte[boundaryLen];
+            byte[] buffer = new byte[64 * 1024];
+            byte[] tail = new byte[boundaryLen];
+            int tailLen = 0;
 
-            int lookaheadCount = 0;
-            // Prime the lookahead
-            while (lookaheadCount < boundaryLen) {
-                int read = input.read(lookahead, lookaheadCount, boundaryLen - lookaheadCount);
+            // Fill initial tail
+            while (tailLen < boundaryLen) {
+                int read = input.read(tail, tailLen, boundaryLen - tailLen);
                 if (read == -1) break;
-                lookaheadCount += read;
+                tailLen += read;
             }
 
-            while (true) {
-                // Check if lookahead matches boundary
-                if (matchBoundary(lookahead, lookaheadCount, boundaryBytes)) {
-                    // Reached boundary, stop writing
-                    break;
+            int n;
+            while ((n = input.read(buffer)) != -1) {
+                // We have 'tail' from previous chunk + 'buffer' with n bytes
+                // The combined stream is: tail (tailLen bytes) followed by buffer (n bytes)
+                // We can safely write everything except the last 'boundaryLen' bytes,
+                // while checking if the boundary appears.
+
+                // Fast path: search for boundary in (tail + buffer)
+                byte[] combined = new byte[tailLen + n];
+                System.arraycopy(tail, 0, combined, 0, tailLen);
+                System.arraycopy(buffer, 0, combined, tailLen, n);
+
+                int boundaryPos = findBoundary(combined, combined.length, boundaryBytes);
+                if (boundaryPos != -1) {
+                    // Boundary found! Write up to boundaryPos and stop
+                    bos.write(combined, 0, boundaryPos);
+                    bos.flush();
+                    return new ParseResult(filename, contentType, targetFile);
                 }
 
-                // If not matching, we can emit the first byte of lookahead and read one new byte
-                bos.write(lookahead[0]);
-
-                // Shift lookahead left by 1
-                System.arraycopy(lookahead, 1, lookahead, 0, lookaheadCount - 1);
-                int nextByte = input.read();
-                if (nextByte == -1) {
-                    // EOF reached before cleanly matching boundary
-                    break;
+                // If not found, write out (combined.length - boundaryLen) bytes
+                int safeToWrite = combined.length - boundaryLen;
+                if (safeToWrite > 0) {
+                    bos.write(combined, 0, safeToWrite);
+                    System.arraycopy(combined, safeToWrite, tail, 0, boundaryLen);
+                    tailLen = boundaryLen;
+                } else {
+                    System.arraycopy(combined, 0, tail, 0, combined.length);
+                    tailLen = combined.length;
                 }
-                lookahead[lookaheadCount - 1] = (byte) nextByte;
+            }
+
+            // Check if boundary was at the very end
+            if (tailLen >= boundaryLen && findBoundary(tail, tailLen, boundaryBytes) != -1) {
+                int pos = findBoundary(tail, tailLen, boundaryBytes);
+                bos.write(tail, 0, pos);
+            } else if (tailLen > 0) {
+                bos.write(tail, 0, tailLen);
             }
             bos.flush();
         }
@@ -131,11 +150,17 @@ public class StreamingMultipartParser {
         return new ParseResult(filename, contentType, targetFile);
     }
 
-    private boolean matchBoundary(byte[] lookahead, int len, byte[] boundary) {
-        if (len < boundary.length) return false;
-        for (int i = 0; i < boundary.length; i++) {
-            if (lookahead[i] != boundary[i]) return false;
+    private int findBoundary(byte[] src, int srcLen, byte[] boundary) {
+        if (srcLen < boundary.length) return -1;
+        outer:
+        for (int i = 0; i <= srcLen - boundary.length; i++) {
+            for (int j = 0; j < boundary.length; j++) {
+                if (src[i + j] != boundary[j]) {
+                    continue outer;
+                }
+            }
+            return i;
         }
-        return true;
+        return -1;
     }
 }

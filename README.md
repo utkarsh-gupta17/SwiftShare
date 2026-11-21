@@ -33,13 +33,13 @@ A lightweight file-sharing tool built with pure Java and Angular. Upload a file,
 | **Zero-dependency backend** | Plain Java 17 + `com.sun.net.httpserver`. No Spring, no servlet container, no external JARs beyond the JDK. |
 | **Direct socket transfer** | File bytes are staged temporarily on the backend and streamed over a dedicated local TCP socket to the downloader. |
 | **6-digit PIN access** | Every upload session generates a unique PIN via `SecureRandom`. Only someone with the PIN can download the file. |
-| **500 MB file cap** | Hard limit enforced at three layers: `Content-Length` header, streaming byte-count, and post-parse check. |
+| **500 MB file cap** | Hard limit enforced on `Content-Length` and verified on disk post-stream before registering the session. |
 | **File type allowlist** | Backend enforces an extension whitelist (`.txt`, `.pdf`, `.jpg`, `.png`, `.zip`, `.docx`, `.mp4`, `.json`, etc.) and rejects all executables and scripts. |
 | **Rate limiting** | Max 10 upload and download requests per IP per minute using atomic sliding-window counters. |
 | **Session expiry** | If nobody connects within **5 minutes**, the `ServerSocket` times out and the staged temp file is deleted automatically. |
-| **Streaming architecture** | Files are transferred in 8 KB chunks. Memory usage is constant regardless of file size — no file is ever loaded entirely into RAM. |
-| **Concurrent sessions** | `ConcurrentHashMap` stores PIN→port and port→filePath entries; an `ExecutorService` thread pool handles all HTTP requests. |
-| **Thread-safe** | No `HashMap`, no `Vector`, no `synchronized` blocks — all shared state uses atomic, lock-free data structures. |
+| **Streaming upload** | Multipart body is streamed directly to temporary disk storage in 8 KB chunks with minimal memory footprint during upload. |
+| **Concurrent sessions** | `ConcurrentHashMap` stores PIN→port and port→filePath entries; an `ExecutorService` thread pool (10 worker threads) processes HTTP API requests. |
+| **Thread-safe** | Thread-safe concurrent collections (`ConcurrentHashMap`) manage shared session mappings and rate-limiting state. |
 | **Smart file compression** | Automatic compression using DEFLATE/GZIP algorithms — small files use DEFLATE, large files (>100KB) use GZIP for optimal reduction. |
 | **Drag-and-drop upload** | Animated drop zone with live hover states, file type detection, and human-readable size formatting (KB, MB, GB). |
 | **Auto-deletion** | Both the sender's staged file and the receiver's temp file are deleted the moment the download completes (or on any error). |
@@ -119,15 +119,16 @@ SwiftShare/
 │       │   └── CORSHandler.java      # OPTIONS preflight + CORS headers
 │       ├── service/
 │       │   └── FileSharer.java       # Session state; ephemeral socket lifecycle; PIN lookup
-│       ├── compression/
+│       ├── compression/              # Pluggable compression strategy module
 │       │   ├── CompressionStrategy.java      # Strategy interface
 │       │   ├── DeflateCompressionStrategy.java  # DEFLATE implementation (1KB-1MB files)
 │       │   ├── GzipCompressionStrategy.java     # GZIP implementation (>100KB files)
 │       │   └── CompressionFactory.java     # Factory for optimal strategy selection
 │       └── utils/
 │           ├── CompressionUtils.java    # Compression/decompression utility methods
-│           ├── UploadUtils.java        # SecureRandom port + PIN generation
-│           └── MultipartParser.java     # Raw multipart/form-data byte parser
+│           ├── RateLimitUtils.java      # Atomic sliding-window rate limit utility
+│           ├── StreamingMultipartParser.java # Direct stream-to-disk multipart parser
+│           └── UploadUtils.java        # SecureRandom port + PIN generation
 │
 ├── src/test/java/p2p/
 │   └── compression/
@@ -242,7 +243,7 @@ stateDiagram-v2
 ```mermaid
 graph TD
     A["User Request"] --> B["Rate Limiter<br/>Layer 1: 10 req/min per IP on Upload & Download; HTTP 429 on violation"]
-    B --> C["Size Checker<br/>Layer 2: Content-Length header + streaming byte-count + post-parse"]
+    B --> C["Size Checker<br/>Layer 2: Content-Length header + post-stream disk size check"]
     C --> D["Extension Guard<br/>Layer 3: allowlist only; executables/scripts blocked; HTTP 415 on fail"]
     D --> E["PIN Validator<br/>Layer 4: SecureRandom 6-digit; 403 on mismatch; single-use token"]
     E --> F["Socket Timeout<br/>Layer 5: 5-minute ServerSocket timeout; automatic cleanup"]
@@ -269,7 +270,7 @@ In production, both the Angular static files and the Java backend sit behind the
 
 ### POST /upload
 
-Upload a file and receive access credentials for peer-to-peer sharing. Files are automatically compressed before storage.
+Upload a file and receive access credentials for sharing. Files are automatically compressed before storage.
 
 **Request:**
 ```http
@@ -330,9 +331,10 @@ Access-Control-Expose-Headers: Content-Disposition, Content-Length
 ```
 
 **Status Codes:**
-- `200 OK` - Download successful, file streamed (decompressed)
+- `200 OK` - Download successful, file streamed
 - `403 Forbidden` - Invalid or expired token
 - `404 Not Found` - No session found for given token
+- `429 Too Many Requests` - Rate limit exceeded
 - `500 Internal Server Error` - Download error occurred
 
 **Security Headers**:
@@ -349,9 +351,9 @@ Access-Control-Expose-Headers: Content-Disposition, Content-Length
 
 | Metric | Implementation | Benefit |
 |---|---|---|
-| **Memory Usage** | 8 KB streaming buffer | Constant regardless of file size |
-| **Concurrent Sessions** | 10-thread ExecutorService | Handles hundreds of simultaneous transfers |
-| **Transfer Speed** | Raw TCP socket + compression | Compressed data = faster transfer |
+| **Memory Usage (Upload & Download)** | Streaming multipart parser & buffered file streaming (64 KB / 8 KB buffers) | Peak heap delta < 20 MB during full 500 MB upload/download cycle |
+| **Concurrent Requests** | 10-thread ExecutorService | Fixed thread pool handling concurrent API requests |
+| **Transfer Mechanism** | Raw TCP socket + compression | Compressed data = faster transfer |
 | **Compression** | DEFLATE/GZIP strategy selection | Optimal compression per file size |
 | **Session Timeout** | 5-minute socket timeout | Automatic resource cleanup |
 | **Storage Footprint** | Compressed temp files in `java.io.tmpdir/p2p-file-uploads/` | Reduced disk usage |

@@ -12,6 +12,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import p2p.service.FileSharer;
+import p2p.utils.CompressionUtils;
 import p2p.utils.RateLimitUtils;
 import p2p.utils.StreamingMultipartParser;
 
@@ -21,8 +22,9 @@ public class UploadHandler implements HttpHandler {
     private final String uploadDir;
     private final FileSharer fileSharer;
 
-    // Limit files to 500 MB max
+    // Limit files to 500 MB max (plus multipart header margin for Content-Length check)
     private static final long MAX_FILE_SIZE = 500L * 1024 * 1024;
+    private static final long MAX_REQUEST_SIZE = MAX_FILE_SIZE + 1024 * 1024; // 1 MB envelope margin
 
     // Rate limit: 10 uploads per IP per minute
     private static final int MAX_UPLOADS_PER_MIN = 10;
@@ -89,7 +91,7 @@ public class UploadHandler implements HttpHandler {
         String lengthHeader = exchange.getRequestHeaders().getFirst("Content-Length");
         if (lengthHeader != null) {
             try {
-                if (Long.parseLong(lengthHeader) > MAX_FILE_SIZE) {
+                if (Long.parseLong(lengthHeader) > MAX_REQUEST_SIZE) {
                     sendTextResponse(exchange, 413, "Payload Too Large: File exceeds 500 MB limit");
                     return;
                 }
@@ -135,13 +137,14 @@ public class UploadHandler implements HttpHandler {
         // Rename file with a unique UUID prefix
         String uniqueName = UUID.randomUUID() + "_" + filename;
         File finalFile = new File(uploadDir, uniqueName);
-        if (!tempFile.renameTo(finalFile)) {
-            // fallback to copying if rename fails
-            try (var in = new java.io.FileInputStream(tempFile);
-                 var out = new java.io.FileOutputStream(finalFile)) {
-                in.transferTo(out);
-            }
-            tempFile.delete();
+
+        // Read streamed file bytes, compress using optimal strategy, and write compressed content to finalFile
+        byte[] uncompressedBytes = java.nio.file.Files.readAllBytes(tempFile.toPath());
+        tempFile.delete();
+
+        byte[] compressedBytes = CompressionUtils.compress(uncompressedBytes, filename);
+        try (var fos = new java.io.FileOutputStream(finalFile)) {
+            fos.write(compressedBytes);
         }
 
         // Stage file with sharer and start listening on socket
