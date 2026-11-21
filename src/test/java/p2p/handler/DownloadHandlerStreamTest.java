@@ -4,6 +4,7 @@ import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
 import org.junit.jupiter.api.Test;
 import p2p.service.FileSharer;
+import p2p.utils.CompressionUtils;
 
 import java.io.*;
 import java.net.InetSocketAddress;
@@ -15,18 +16,20 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class DownloadHandlerStreamTest {
 
     @Test
-    public void testDownloadStreamsDirectly() throws IOException {
+    public void testDownloadStreamsWithDecompression() throws IOException {
         FileSharer sharer = new FileSharer();
         DownloadHandler handler = new DownloadHandler(sharer);
 
-        // Create a dummy file to share
+        // 50 KB of raw bytes — UploadHandler would have DEFLATE-compressed these before staging
+        int originalSize = 50 * 1024;
+        byte[] originalBytes = new byte[originalSize];
+        byte[] compressedBytes = CompressionUtils.compress(originalBytes, "test-stream.bin");
+
+        // Write the compressed bytes to the staged file, exactly as UploadHandler would
         File testFile = File.createTempFile("test-stream-", ".bin");
         testFile.deleteOnExit();
         try (FileOutputStream fos = new FileOutputStream(testFile)) {
-            byte[] chunk = new byte[1024];
-            for (int i = 0; i < 50; i++) {
-                fos.write(chunk);
-            }
+            fos.write(compressedBytes);
         }
 
         int port = sharer.offerFile(testFile.getAbsolutePath());
@@ -39,7 +42,8 @@ public class DownloadHandlerStreamTest {
         handler.handle(ex);
 
         assertEquals(200, ex.getResponseCode());
-        assertEquals(50 * 1024, ex.getResponseBodyBytes().length);
+        // DownloadHandler decompresses before serving — client receives the original uncompressed size
+        assertEquals(originalSize, ex.getResponseBodyBytes().length);
     }
 
     static class MockHttpExchange extends HttpExchange {

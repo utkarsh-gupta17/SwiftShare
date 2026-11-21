@@ -38,8 +38,8 @@ A lightweight file-sharing tool built with pure Java and Angular. Upload a file,
 | **Rate limiting** | Max 10 upload and download requests per IP per minute using atomic sliding-window counters. |
 | **Session expiry** | If nobody connects within **5 minutes**, the `ServerSocket` times out and the staged temp file is deleted automatically. |
 | **Streaming upload** | Multipart body is streamed directly to temporary disk storage in 8 KB chunks with minimal memory footprint during upload. |
-| **Concurrent sessions** | `ConcurrentHashMap` stores PIN→port and port→filePath entries; an `ExecutorService` thread pool (10 worker threads) processes HTTP API requests. |
-| **Thread-safe** | Thread-safe concurrent collections (`ConcurrentHashMap`) manage shared session mappings and rate-limiting state. |
+| **Concurrent Sessions** | `ConcurrentHashMap` stores PIN→port and port→filePath entries; an `ExecutorService` thread pool (10 worker threads) processes HTTP API requests. |
+| **Thread-safe** | Thread-safe concurrent collections (`ConcurrentHashMap`) manage shared session mappings and rate-limiting state without external synchronization. |
 | **Smart file compression** | Automatic compression using DEFLATE/GZIP algorithms — small files use DEFLATE, large files (>100KB) use GZIP for optimal reduction. |
 | **Drag-and-drop upload** | Animated drop zone with live hover states, file type detection, and human-readable size formatting (KB, MB, GB). |
 | **Auto-deletion** | Both the sender's staged file and the receiver's temp file are deleted the moment the download completes (or on any error). |
@@ -58,19 +58,19 @@ SwiftShare uses an ephemeral socket architecture — the backend coordinates aut
 graph LR
     Sender["Sender Browser"]
     Backend["Java Backend<br/>(HTTP :8080)"]
-    Storage["Temporary Disk Storage<br/>(Streaming Parser)"]
+    Storage["Temporary Disk Storage<br/>(Compressed)"]
     Socket["Ephemeral ServerSocket<br/>(:port on localhost)"]
     Receiver["Receiver Browser"]
 
     Sender -->|"1. POST /upload (multipart stream)"| Backend
-    Backend -->|"2. Stream to disk directly"| Storage
+    Backend -->|"2. Compress & stream to disk"| Storage
     Backend -->|"3. Start daemon socket server"| Socket
     Backend -->|"4. Return {port, PIN}"| Sender
 
     Receiver -->|"5. GET /download?token=PIN"| Backend
     Backend -->|"6. Connect & stream from socket"| Socket
     Socket -->|"7. Read & serve"| Storage
-    Backend -->|"8. Attachment stream"| Receiver
+    Backend -->|"8. Decompress & stream"| Receiver
 ```
 
 Key insight: the backend stages the file temporarily (with automatic compression) to serve it via a dedicated socket session upon valid PIN entry. Files are cleaned up immediately following transfer.
@@ -115,7 +115,7 @@ SwiftShare/
 │       │   └── FileController.java   # Wires HTTP routes; fixed thread pool (10 threads)
 │       ├── handler/
 │       │   ├── UploadHandler.java    # POST /upload — rate limit, parse, compress, store, issue PIN
-│       │   ├── DownloadHandler.java  # GET /download — validate PIN, decompress, proxy socket stream
+│       │   ├── DownloadHandler.java  # GET /download — rate limit, validate PIN, decompress, proxy socket stream
 │       │   └── CORSHandler.java      # OPTIONS preflight + CORS headers
 │       ├── service/
 │       │   └── FileSharer.java       # Session state; ephemeral socket lifecycle; PIN lookup
@@ -166,7 +166,7 @@ SwiftShare/
 2. Angular's `HttpClient` sends `POST /api/upload` as `multipart/form-data` with `reportProgress: true`.
 3. `UploadHandler` checks the IP rate limit, validates `Content-Length`, and streams the multipart body directly to a temporary file on disk using `StreamingMultipartParser` (hard-stop at 500 MB).
 4. The file extension is checked against the allowlist. If blocked, `415 Unsupported Media Type` is returned and the temp file is deleted.
-5. The streamed temp file is renamed to `java.io.tmpdir/p2p-file-uploads/<uuid>_<originalname>`.
+5. The temp file is read back, compressed via `CompressionUtils` (DEFLATE for small files, GZIP for ≥100 KB), and written to its final path `java.io.tmpdir/p2p-file-uploads/<uuid>_<originalname>`.
 6. `FileSharer.offerFile()` picks a free port in 49152–65535, generates a `SecureRandom` 6-digit PIN, and stores both in two `ConcurrentHashMap`s.
 7. A daemon thread starts `FileSharer.startFileServer(port)` — a `ServerSocket` that blocks on `accept()`, waiting for the receiver.
 8. The backend responds `200 { "port": N, "token": "XXXXXX" }`. Angular displays the PIN and a "Copy PIN" button.
@@ -183,14 +183,14 @@ sequenceDiagram
     Note over UH: 1. Rate limit check (10/IP/min, else 429)<br/>2. Content-Length validation (hard stop at 500 MB, else 413)
     UH->>SP: 3. Stream body directly to disk
     SP-->>UH: 4. Temp file path
-    Note over UH: 5. Extension allowlist check (else 415, delete temp)
-    UH->>FS: 6. offerFile(path)
+    Note over UH: 5. Extension allowlist check (else 415, delete temp)<br/>6. CompressionUtils.compress() — DEFLATE or GZIP based on file size
+    UH->>FS: 7. offerFile(compressedPath)
     Note over FS: Free port in 49152–65535 + SecureRandom 6-digit PIN<br/>stored in two ConcurrentHashMaps
     FS-->>UH: port
     UH->>FS: getPinForPort(port)
     FS-->>UH: token
-    UH->>SS: 7. Start daemon thread — startFileServer(port), accept() with 5-minute timeout
-    UH-->>S: 8. 200 {"port": N, "token": "XXXXXX"}
+    UH->>SS: 8. Start daemon thread — startFileServer(port), accept() with 5-minute timeout
+    UH-->>S: 9. 200 {"port": N, "token": "XXXXXX"}
     Note over S: PIN shown with a Copy button
 ```
 
@@ -209,11 +209,11 @@ sequenceDiagram
     DH->>FS: 3. validatePin(port, token)
     FS-->>DH: 4. return port
     DH->>S: TCP connect(localhost, port)
-    S-->>DH: 5. "Filename: report.pdf" + file bytes
-    Note over DH: 6. Stream bytes to temp file
-    DH-->>R: 7. 200 blob, Content-Disposition: attachment
-    Note over R: 8. Browser save dialog fires
-    DH->>FS: 9. cleanupFileTransfer(port) — delete staged file, remove PIN and port
+    S-->>DH: 5. "Filename: report.pdf" + compressed file bytes
+    Note over DH: 6. Stream compressed bytes to temp file<br/>7. CompressionUtils.decompress() — detect GZIP or DEFLATE from magic bytes
+    DH-->>R: 8. 200 blob (original bytes), Content-Disposition: attachment
+    Note over R: 9. Browser save dialog fires
+    DH->>FS: 10. cleanupFileTransfer(port) — delete staged file, remove PIN and port
 ```
 
 ### PIN & Session Lifecycle
@@ -391,8 +391,8 @@ Access-Control-Expose-Headers: Content-Disposition, Content-Length
 - Ephemeral port assigned per transfer session
 
 **4. Atomic Data Structures**
-- `ConcurrentHashMap` prevents race conditions without locks
-- Atomic operations for rate limiting counters
+- `ConcurrentHashMap` provides thread-safe concurrent access without external synchronization
+- Atomic compute operations for rate limiting counters
 - Predictable behavior under concurrent load
 
 **5. Strategy Pattern for Compression**
