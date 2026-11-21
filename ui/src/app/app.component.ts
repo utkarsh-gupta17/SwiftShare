@@ -147,7 +147,7 @@ export class AppComponent {
       // The file has been transferred regardless. We inform the user and let them decide.
       this.modalService.info(
         'Transfer Complete',
-        `"${result.filename}" (${this.formatFileSize(result.size)}) has been received from the peer. The server copy has been removed. Please save the file using your browser\'s download dialog.`
+        `"${result.filename}" (${this.formatFileSize(result.size)}) has been received from the server. The server copy has been removed. Please save the file using your browser\'s download dialog.`
       );
     } catch (error: any) {
       console.error('File download failed:', error);

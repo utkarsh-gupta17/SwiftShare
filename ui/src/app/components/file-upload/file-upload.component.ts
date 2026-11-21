@@ -56,7 +56,7 @@ import { ModalService } from '../../services/modal.service';
               <span class="text-blue-600 dark:text-blue-400 hover:underline">Choose a file</span> or drag & drop here
             </p>
             <p class="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-              Any file type • Direct peer-to-peer transmission • End-to-end local streaming
+              Common documents, images, archives, and media • PIN-protected • Streamed to the server
             </p>
           </div>
 
